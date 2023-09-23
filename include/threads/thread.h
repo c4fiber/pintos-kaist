@@ -20,8 +20,9 @@ enum thread_status {
 
 /* Thread identifier type.
    You can redefine this to whatever type you like. */
+//tid_t는 int타입 
 typedef int tid_t;
-#define TID_ERROR ((tid_t) -1)          /* Error value for tid_t. */
+#define TID_ERROR ((tid_t) -1)          /* Error value for tid_t. */ //error value for tid_t를 tid_t - 1로 정의함..뭐지 이건?
 
 /* Thread priorities. */
 #define PRI_MIN 0                       /* Lowest priority. */
@@ -103,7 +104,7 @@ struct thread {
 	/* Table for whole virtual memory owned by thread. */
 	struct supplemental_page_table spt;
 #endif
-
+	int64_t wake_up;					/* wake up time for alarm clock */
 	/* Owned by thread.c. */
 	struct intr_frame tf;               /* Information for switching */
 	unsigned magic;                     /* Detects stack overflow. */
