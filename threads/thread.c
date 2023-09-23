@@ -28,6 +28,10 @@
    that are ready to run but not actually running. */
 static struct list ready_list;
 
+/* List of processes in THREAD_BLOCKED state.
+   blocked because of timer */
+static struct list blocked_list;
+
 /* Idle thread. */
 static struct thread *idle_thread;
 
@@ -108,6 +112,7 @@ thread_init (void) {
 	/* Init the globla thread context */
 	lock_init (&tid_lock);
 	list_init (&ready_list);
+	list_init (&blocked_list);
 	list_init (&destruction_req);
 
 	/* Set up a thread structure for the running thread. */
@@ -208,6 +213,43 @@ thread_create (const char *name, int priority,
 	thread_unblock (t);
 
 	return tid;
+}
+
+static bool less_then_func(struct list_elem *a, struct list_elem *b, void *aux) {
+	return list_entry(a, struct thread, elem)->wake_up_ticks < 
+			list_entry(b, struct thread, elem)->wake_up_ticks;
+}
+
+/* current thread: set wake_up_time and sleep thread */
+void thread_sleep(const int64_t ticks) {
+	struct thread *curr = thread_current();
+
+	ASSERT (!intr_context());
+	ASSERT (intr_get_level() == INTR_OFF);
+
+	curr->wake_up_ticks = ticks;
+	list_insert_ordered(&blocked_list, &thread_current ()->elem,less_then_func, 0);
+	thread_block();
+}
+
+/* wake up threads if time is over */
+void thread_wake_up(const int64_t ticks_now) {
+	struct list_elem *ptr;
+	struct thread *temp;
+
+	ASSERT (intr_get_level() == INTR_OFF);
+	
+	while (!list_empty(&blocked_list)) {
+		ptr = list_front(&blocked_list);
+		temp = list_entry(ptr, struct thread, elem);
+
+		if (temp->wake_up_ticks >= ticks_now) {
+			list_remove(ptr);
+			thread_unblock(temp);
+		} else {
+			break; // no more available threads
+		}
+	}
 }
 
 /* Puts the current thread to sleep.  It will not be scheduled
