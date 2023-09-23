@@ -2,7 +2,7 @@
 #include <debug.h>
 #include <stddef.h>
 #include <random.h>
-#include <stdio.h>readysleep
+#include <stdio.h>
 #include <string.h>
 #include "threads/flags.h"
 #include "threads/interrupt.h"
@@ -27,9 +27,6 @@
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
 static struct list ready_list;
-
-/* List of processes in THREAD_BLOCKED state*/
-static struct list sleep_list;
 
 /* Idle thread. */
 static struct thread *idle_thread;
@@ -56,8 +53,6 @@ static unsigned thread_ticks;   /* # of timer ticks since last yield. */
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
 bool thread_mlfqs;
-
-typedef bool list_less_func;
 
 static void kernel_thread (thread_func *, void *aux);
 
@@ -113,7 +108,6 @@ thread_init (void) {
 	/* Init the globla thread context */
 	lock_init (&tid_lock);
 	list_init (&ready_list);
-	list_init (&sleep_list);
 	list_init (&destruction_req);
 
 	/* Set up a thread structure for the running thread. */
@@ -216,11 +210,6 @@ thread_create (const char *name, int priority,
 	return tid;
 }
 
-list_less_func less (const struct list_elem *a, const struct list_elem *b, void *aux) {
-	return (list_entry(a, struct thread, elem) -> wake_up < list_entry(b, struct thread, elem) -> wake_up);
-	
-};
-
 /* Puts the current thread to sleep.  It will not be scheduled
    again until awoken by thread_unblock().
 
@@ -231,11 +220,7 @@ void
 thread_block (void) {
 	ASSERT (!intr_context ());
 	ASSERT (intr_get_level () == INTR_OFF);
-	
-	//sleep list here
-	list_insert_ordered(&sleep_list, thread_current, *less, 0);
 	thread_current ()->status = THREAD_BLOCKED;
-
 	schedule ();
 }
 
