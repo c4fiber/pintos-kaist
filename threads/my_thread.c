@@ -212,6 +212,7 @@ thread_create (const char *name, int priority,
 	return tid;
 }
 
+//todo
 /* Puts the current thread to sleep.  It will not be scheduled
    again until awoken by thread_unblock().
 
@@ -222,7 +223,14 @@ void
 thread_block (void) {
 	ASSERT (!intr_context ());
 	ASSERT (intr_get_level () == INTR_OFF);
-	thread_current ()->status = THREAD_BLOCKED;
+	struct thread *curr = thread_current ();
+	// thread_current ()->status = THREAD_BLOCKED;
+	curr->status = THREAD_BLOCKED;
+	// schedule ();
+	//todo에러난듯??readylist에서 불러와서 blocklist에 넣어야함
+	if(curr!=idle_thread)
+		list_push_back(&block_list,&curr->elem);
+	// do_schedule(THREAD_BLOCKED);
 	schedule ();
 }
 
@@ -592,43 +600,12 @@ allocate_tid (void) {
 }
 
 //todo
-static bool
-wake_up_tick_less (struct list_elem *a_, struct list_elem *b_,
-            void *aux UNUSED) 
-{
-  struct thread *a = list_entry (a_, struct thread, elem);
-  struct thread *b = list_entry (b_, struct thread, elem);
-  
-  return a->wake_up_tick < b->wake_up_tick;
-}
-
-//todo
-//일어날 시간이 안된 스레드들을 다시 재워줌
+//tick시간보다 작은 경우에 blocklist에서 빼서 readylist에 넣어야함
 void
-thread_sleep (ticks) {
-	ASSERT (!intr_context ());
-	struct thread *curr = thread_current ();
-	enum intr_level old_level;
-	curr->wake_up_tick = ticks;
-	// if(curr!=idle_thread)
-	list_insert_ordered(&block_list,&curr->elem,wake_up_tick_less,NULL);
-	/* intr_disable: cpu의 제어권을 interrupt가 다시 enable될 때까지
-		넘겨주지 않겠다는 의미*/
-	old_level = intr_disable();
-	// do_schedule(THREAD_BLOCKED);
-	thread_block();
-	intr_set_level(old_level);
-}
-
-//todo
-//일어나야할 시간이 지난 경우 깨워줌
-void
-thread_wake_up(int64_t ticks){
-	while(!list_empty(&block_list)){
-		if(list_entry(list_front(&block_list),struct thread,elem)->wake_up_tick<ticks){
-			thread_unblock(list_entry (list_pop_front (&block_list), struct thread, elem));
-		}else{
-			break;
+thread_wake_up(void){
+	if(!list_empty(&block_list)){
+		if (list_front(&block_list)<100){
+			thread_unblock(list_pop_front(&block_list));
 		}
 	}
 }

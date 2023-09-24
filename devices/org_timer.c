@@ -87,19 +87,15 @@ timer_elapsed (int64_t then) {
 	return timer_ticks () - then;
 }
 
-// /* Suspends execution for approximately TICKS timer ticks. */
-// void
-// timer_sleep (int64_t ticks) {
-// 	int64_t start = timer_ticks ();
+/* Suspends execution for approximately TICKS timer ticks. */
+void
+timer_sleep (int64_t ticks) {
+	int64_t start = timer_ticks ();
 
-// 	ASSERT (intr_get_level () == INTR_ON);
-// 	// while(timer_elapsed (start) < ticks){
-// 	// 	thread_sleep(ticks);
-// 	// }
-// 	if(timer_elapsed(start)<ticks)
-// 		/*아직 깨우면 안되는 current thread를 block list에 넣기*/
-// 		thread_sleep(start+ticks);
-// }
+	ASSERT (intr_get_level () == INTR_ON);
+	while (timer_elapsed (start) < ticks)
+		thread_yield ();
+}
 
 /* Suspends execution for approximately MS milliseconds. */
 void
@@ -125,15 +121,12 @@ timer_print_stats (void) {
 	printf ("Timer: %"PRId64" ticks\n", timer_ticks ());
 }
 
-// /* Timer interrupt handler. */
-// static void
-// timer_interrupt (struct intr_frame *args UNUSED) {
-// 	ticks++;
-// 	thread_tick ();
-// 	/* block list에 있는 thread들 중 깨울 시간이 지난 thread들을 깨워서
-// 		ready list에 옮겨줌*/
-// 	thread_wake_up(ticks);
-// }
+/* Timer interrupt handler. */
+static void
+timer_interrupt (struct intr_frame *args UNUSED) {
+	ticks++;
+	thread_tick ();
+}
 
 /* Returns true if LOOPS iterations waits for more than one timer
    tick, otherwise false. */
@@ -190,26 +183,4 @@ real_time_sleep (int64_t num, int32_t denom) {
 		ASSERT (denom % 1000 == 0);
 		busy_wait (loops_per_tick * num / 1000 * TIMER_FREQ / (denom / 1000));
 	}
-}
-
-//todo
-/* Suspends execution for approximately TICKS timer ticks. */
-void
-timer_sleep (int64_t ticks) {
-	int64_t start = timer_ticks ();
-
-	ASSERT (intr_get_level () == INTR_ON);
-	/*아직 깨우면 안되는 current thread를 block list에 넣기*/
-	thread_sleep(start+ticks);
-}
-
-//todo
-/* Timer interrupt handler. */
-static void
-timer_interrupt (struct intr_frame *args UNUSED) {
-	ticks++;
-	thread_tick ();
-	/* block list에 있는 thread들 중 깨울 시간이 지난 thread들을 깨워서
-		ready list에 옮겨줌*/
-	thread_wake_up(ticks);
 }

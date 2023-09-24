@@ -27,7 +27,6 @@
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
 static struct list ready_list;
-static struct list block_list;
 
 /* Idle thread. */
 static struct thread *idle_thread;
@@ -109,7 +108,6 @@ thread_init (void) {
 	/* Init the globla thread context */
 	lock_init (&tid_lock);
 	list_init (&ready_list);
-	list_init (&block_list);
 	list_init (&destruction_req);
 
 	/* Set up a thread structure for the running thread. */
@@ -154,6 +152,7 @@ thread_tick (void) {
 	/* Enforce preemption. */
 	if (++thread_ticks >= TIME_SLICE)
 		intr_yield_on_return ();
+	printf("난 누구?: %s\n",t->name);
 }
 
 /* Prints thread statistics. */
@@ -589,46 +588,4 @@ allocate_tid (void) {
 	lock_release (&tid_lock);
 
 	return tid;
-}
-
-//todo
-static bool
-wake_up_tick_less (struct list_elem *a_, struct list_elem *b_,
-            void *aux UNUSED) 
-{
-  struct thread *a = list_entry (a_, struct thread, elem);
-  struct thread *b = list_entry (b_, struct thread, elem);
-  
-  return a->wake_up_tick < b->wake_up_tick;
-}
-
-//todo
-//일어날 시간이 안된 스레드들을 다시 재워줌
-void
-thread_sleep (ticks) {
-	ASSERT (!intr_context ());
-	struct thread *curr = thread_current ();
-	enum intr_level old_level;
-	curr->wake_up_tick = ticks;
-	// if(curr!=idle_thread)
-	list_insert_ordered(&block_list,&curr->elem,wake_up_tick_less,NULL);
-	/* intr_disable: cpu의 제어권을 interrupt가 다시 enable될 때까지
-		넘겨주지 않겠다는 의미*/
-	old_level = intr_disable();
-	// do_schedule(THREAD_BLOCKED);
-	thread_block();
-	intr_set_level(old_level);
-}
-
-//todo
-//일어나야할 시간이 지난 경우 깨워줌
-void
-thread_wake_up(int64_t ticks){
-	while(!list_empty(&block_list)){
-		if(list_entry(list_front(&block_list),struct thread,elem)->wake_up_tick<ticks){
-			thread_unblock(list_entry (list_pop_front (&block_list), struct thread, elem));
-		}else{
-			break;
-		}
-	}
 }
