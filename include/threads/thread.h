@@ -103,7 +103,7 @@ struct thread {
 	/* Table for whole virtual memory owned by thread. */
 	struct supplemental_page_table spt;
 #endif
-
+	int64_t wake_up;                    /* wake up for alarm clock*/
 	/* Owned by thread.c. */
 	struct intr_frame tf;               /* Information for switching */
 	unsigned magic;                     /* Detects stack overflow. */
@@ -125,6 +125,9 @@ tid_t thread_create (const char *name, int priority, thread_func *, void *);
 
 void thread_block (void);
 void thread_unblock (struct thread *);
+
+void thread_sleep (int64_t ticks);
+void thread_wake_up (int64_t ticks);
 
 struct thread *thread_current (void);
 tid_t thread_tid (void);
