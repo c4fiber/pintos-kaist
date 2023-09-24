@@ -221,15 +221,20 @@ static bool less_then_func(struct list_elem *a, struct list_elem *b, void *aux) 
 }
 
 /* current thread: set wake_up_time and sleep thread */
-void thread_sleep(const int64_t ticks) {
-	struct thread *curr = thread_current();
+void thread_sleep(const int64_t wake_up_ticks) {
+	struct thread *curr = thread_current ();;
+	enum intr_level old_level;
 
 	ASSERT (!intr_context());
-	ASSERT (intr_get_level() == INTR_OFF);
+	ASSERT (curr != idle_thread);
 
-	curr->wake_up_ticks = ticks;
-	list_insert_ordered(&blocked_list, &thread_current ()->elem,less_then_func, 0);
+	curr->wake_up_ticks = wake_up_ticks;
+	// list_remove(&curr->elem); // next_thread_to_run 에서 수행함
+	list_insert_ordered(&blocked_list, &curr->elem, less_then_func, 0);
+
+	old_level = intr_disable();
 	thread_block();
+	intr_set_level(old_level);
 }
 
 /* wake up threads if time is over */
@@ -243,8 +248,8 @@ void thread_wake_up(const int64_t ticks_now) {
 		ptr = list_front(&blocked_list);
 		temp = list_entry(ptr, struct thread, elem);
 
-		if (temp->wake_up_ticks >= ticks_now) {
-			list_remove(ptr);
+		if (temp->wake_up_ticks <= ticks_now) {
+			list_remove(ptr); // pop from blocked list
 			thread_unblock(temp);
 		} else {
 			break; // no more available threads
