@@ -251,18 +251,19 @@ thread_unblock (struct thread *t) {
 	intr_set_level (old_level);
 }
 
-list_less_func less (const struct list_elem *a, const struct list_elem *b, void *aux) {
+bool less (const struct list_elem *a, const struct list_elem *b, void *aux) {
 	return (list_entry(a, struct thread, elem) -> wake_up) < (list_entry(b, struct thread, elem) -> wake_up);
 }
 
 void thread_sleep (int64_t ticks) {
+	ASSERT(thread_current() != idle_thread);
 	enum intr_level old_level;
 	old_level = intr_disable ();
 
-	thread_current () -> wake_up = ticks;
-	thread_current () -> status = THREAD_BLOCKED;
-	//sleep list insert here
-	list_insert_ordered(&sleep_list, thread_current, *less, 0);
+	thread_current() -> wake_up = ticks;
+	// sleep list insert here
+	list_insert_ordered(&sleep_list, thread_current(), *less, 0);
+	// list_push_back(&sleep_list, &thread_current() -> elem);
 	thread_block();
 
 	intr_set_level (old_level);
@@ -271,13 +272,19 @@ void thread_sleep (int64_t ticks) {
 void thread_wake_up (int64_t ticks) {
 	ASSERT (!list_empty(&sleep_list));
 	//sleep list에 있는 멤버들을 탐색
-	struct thread *wakey_thread = list_entry(list_pop_front(&sleep_list), struct thread, elem);
-	//맨 앞에꺼 하나 꺼내옴(pop) <= while문으로 반복
-	if (!(wakey_thread -> wake_up < timer_ticks())) {
-		thread_unblock(wakey_thread);
+	//맨 앞에꺼 하나 꺼내옴(pop)
+	struct list_elem *e = list_begin(&sleep_list);
+
+	while (e != list_end (&sleep_list)) {
+		struct thread *wakey_thread = list_entry(e, struct thread, elem);
+		//해당 스레드 구조체의 wake_up 멤버와 timer_ticks()를 비교
+		if (wakey_thread ->wake_up <= ticks) {
+			//timer_ticks가 더 작다면 해당 thread를 unblock함
+			e = list_remove(e);
+			thread_unblock(wakey_thread);
+		}
 	}
-	//해당 스레드 구조체의 wake_up 멤버와 timer_ticks()를 비교
-	//timer_ticks가 더 작다면 해당 thread를 unblock함
+
 }
 
 /* Returns the name of the running thread. */
