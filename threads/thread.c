@@ -212,7 +212,7 @@ thread_create (const char *name, int priority,
 
 	/* Add to run queue. */
 	thread_unblock (t);
-
+	thread_yield();
 	return tid;
 }
 
@@ -251,7 +251,11 @@ thread_unblock (struct thread *t) {
 	intr_set_level (old_level);
 }
 
-bool less (const struct list_elem *a, const struct list_elem *b, void *aux) {
+static bool compare_priority (const struct list_elem *a, const struct list_elem *b, void *aux) {
+	return (list_entry(a, struct thread, elem) -> priority) > (list_entry(b, struct thread, elem) -> priority);
+}
+
+static bool compare_wake_up (const struct list_elem *a, const struct list_elem *b, void *aux) {
 	return (list_entry(a, struct thread, elem) -> wake_up) < (list_entry(b, struct thread, elem) -> wake_up);
 }
 
@@ -262,7 +266,7 @@ void thread_sleep (int64_t ticks) {
 
 	thread_current() -> wake_up = ticks;
 	// sleep list insert here
-	list_insert_ordered(&sleep_list, &thread_current() -> elem, less, 0);
+	list_insert_ordered(&sleep_list, &thread_current() -> elem, compare_wake_up, 0);
 	// list_push_back(&sleep_list, &thread_current() -> elem);
 	thread_block();
 
@@ -360,6 +364,7 @@ thread_yield (void) {
 void
 thread_set_priority (int new_priority) {
 	thread_current ()->priority = new_priority;
+	thread_yield();
 }
 
 /* Returns the current thread's priority. */
@@ -466,10 +471,15 @@ init_thread (struct thread *t, const char *name, int priority) {
    idle_thread. */
 static struct thread *
 next_thread_to_run (void) {
-	if (list_empty (&ready_list))
+	if (list_empty (&ready_list)) {
 		return idle_thread;
-	else
-		return list_entry (list_pop_front (&ready_list), struct thread, elem);
+	} else {
+		//priority
+		struct list_elem *top_priority_elem = list_max(&ready_list, compare_priority, 0);
+		list_remove(top_priority_elem);
+		return list_entry(top_priority_elem, struct thread, elem);
+		// return list_entry (list_pop_front (&ready_list), struct thread, elem);
+	}
 }
 
 /* Use iretq to launch the thread */
