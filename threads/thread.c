@@ -90,7 +90,7 @@ static bool wake_up_ticks_asc(struct list_elem *a, struct list_elem *b, void *au
 }
 
 static bool priority_desc (struct list_elem *a, struct list_elem *b, void *aux) {
-	return list_entry(a, struct thread, elem)->priority > 
+	return list_entry(a, struct thread, elem)->priority < 
 			list_entry(b, struct thread, elem)->priority;
 }
 
@@ -222,6 +222,9 @@ thread_create (const char *name, int priority,
 
 	/* Add to run queue. */
 	thread_unblock (t);
+
+	// preempt
+	thread_yield();
 
 	return tid;
 }
@@ -367,6 +370,9 @@ thread_yield (void) {
 void
 thread_set_priority (int new_priority) {
 	thread_current ()->priority = new_priority;
+
+	// preempt
+	thread_yield();
 }
 
 /* Returns the current thread's priority. */
@@ -475,8 +481,12 @@ static struct thread *
 next_thread_to_run (void) {
 	if (list_empty (&ready_list))
 		return idle_thread;
-	else
-		return list_entry (list_pop_front (&ready_list), struct thread, elem);
+	else {
+		// priority scheduling
+		struct list_elem *top_priority_elem = list_max(&ready_list, priority_desc, 0);
+		list_remove(top_priority_elem);
+		return list_entry (top_priority_elem, struct thread, elem);
+	}
 }
 
 /* Use iretq to launch the thread */
