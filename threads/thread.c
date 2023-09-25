@@ -83,6 +83,17 @@ static tid_t allocate_tid (void);
 // setup temporal gdt first.
 static uint64_t gdt[3] = { 0, 0x00af9a000000ffff, 0x00cf92000000ffff };
 
+/* less functions */
+static bool wake_up_ticks_asc(struct list_elem *a, struct list_elem *b, void *aux) {
+	return list_entry(a, struct thread, elem)->wake_up_ticks < 
+			list_entry(b, struct thread, elem)->wake_up_ticks;
+}
+
+static bool priority_desc (struct list_elem *a, struct list_elem *b, void *aux) {
+	return list_entry(a, struct thread, elem)->priority > 
+			list_entry(b, struct thread, elem)->priority;
+}
+
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
    general and it is possible in this case only because loader.S
@@ -215,10 +226,7 @@ thread_create (const char *name, int priority,
 	return tid;
 }
 
-static bool less_then_func(struct list_elem *a, struct list_elem *b, void *aux) {
-	return list_entry(a, struct thread, elem)->wake_up_ticks < 
-			list_entry(b, struct thread, elem)->wake_up_ticks;
-}
+
 
 /* current thread: set wake_up_time and sleep thread */
 void thread_sleep(const int64_t wake_up_ticks) {
@@ -230,7 +238,7 @@ void thread_sleep(const int64_t wake_up_ticks) {
 
 	curr->wake_up_ticks = wake_up_ticks;
 	// list_remove(&curr->elem); // next_thread_to_run 에서 수행함
-	list_insert_ordered(&blocked_list, &curr->elem, less_then_func, 0);
+	list_insert_ordered(&blocked_list, &curr->elem, wake_up_ticks_asc, 0);
 
 	old_level = intr_disable();
 	thread_block();
