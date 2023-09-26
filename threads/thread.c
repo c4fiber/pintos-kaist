@@ -227,6 +227,8 @@ thread_block (void) {
 	schedule ();
 }
 
+
+//todo
 /* Transitions a blocked thread T to the ready-to-run state.
    This is an error if T is not blocked.  (Use thread_yield() to
    make the running thread ready.)
@@ -295,6 +297,8 @@ thread_exit (void) {
 	NOT_REACHED ();
 }
 
+
+//todo
 /* Yields the CPU.  The current thread is not put to sleep and
    may be scheduled again immediately at the scheduler's whim. */
 void
@@ -311,6 +315,7 @@ thread_yield (void) {
 	intr_set_level (old_level);
 }
 
+//todo
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) {
