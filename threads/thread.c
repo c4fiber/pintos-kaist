@@ -252,7 +252,7 @@ thread_unblock (struct thread *t) {
 }
 
 static bool compare_priority (const struct list_elem *a, const struct list_elem *b, void *aux) {
-	return (list_entry(a, struct thread, elem) -> priority) > (list_entry(b, struct thread, elem) -> priority);
+	return (list_entry(a, struct thread, elem) -> priority) < (list_entry(b, struct thread, elem) -> priority);
 }
 
 static bool compare_wake_up (const struct list_elem *a, const struct list_elem *b, void *aux) {
