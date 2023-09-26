@@ -250,8 +250,26 @@ thread_unblock (struct thread *t) {
 	t->status = THREAD_READY;
 	intr_set_level (old_level);
 }
-
+//priority
 static bool compare_priority (const struct list_elem *a, const struct list_elem *b, void *aux) {
+	// struct thread *alpha = list_entry(a, thread, elem);
+	// struct thread *beta = list_enrty(b, thread, elem);
+	// int priority_required_alpha;
+	// int priority_required_beta;
+
+	// if (alpha -> priority < alpha -> priority_donated) {
+	// 	priority_required_alpha = alpha -> priority_donated;
+	// } else {
+	// 	priority_required_alpha = alpha -> priority;
+	// }
+
+	// if (beta -> priority < beta -> priority_donated) {
+	// 	int priority_required_beta = beta -> priority_donated;
+	// } else {
+	// 	int priority_required_beta = beta -> priority;
+	// }
+
+	// return (priority_required_alpha < priority_required_beta);
 	return (list_entry(a, struct thread, elem) -> priority) < (list_entry(b, struct thread, elem) -> priority);
 }
 
@@ -461,6 +479,8 @@ init_thread (struct thread *t, const char *name, int priority) {
 	strlcpy (t->name, name, sizeof t->name);
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
 	t->priority = priority;
+	//priority
+	t->priority_donated = -1;
 	t->magic = THREAD_MAGIC;
 }
 

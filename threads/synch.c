@@ -48,6 +48,29 @@ sema_init (struct semaphore *sema, unsigned value) {
 	sema->value = value;
 	list_init (&sema->waiters);
 }
+//priority
+static bool compare_priority (const struct list_elem *a, const struct list_elem *b, void *aux) {
+	// struct thread *alpha = list_entry(a, thread, elem);
+	// struct thread *beta = list_enrty(b, thread, elem);
+	// int priority_required_alpha;
+	// int priority_required_beta;
+
+	// if (alpha -> priority < alpha -> priority_donated) {
+	// 	priority_required_alpha = alpha -> priority_donated;
+	// } else {
+	// 	priority_required_alpha = alpha -> priority;
+	// }
+
+	// if (beta -> priority < beta -> priority_donated) {
+	// 	int priority_required_beta = beta -> priority_donated;
+	// } else {
+	// 	int priority_required_beta = beta -> priority;
+	// }
+
+	// return (priority_required_alpha < priority_required_beta);
+
+	return (list_entry(a, struct thread, elem) -> priority) < (list_entry(b, struct thread, elem) -> priority);
+}
 
 /* Down or "P" operation on a semaphore.  Waits for SEMA's value
    to become positive and then atomically decrements it.
@@ -66,7 +89,10 @@ sema_down (struct semaphore *sema) {
 
 	old_level = intr_disable ();
 	while (sema->value == 0) {
-		list_push_back (&sema->waiters, &thread_current ()->elem);
+		//priority
+		//이 놈을 그냥 뒤에 넣는 대신에 priority를 계산하여 넣는 방식으로 수정
+		list_insert_ordered(&sema->waiters, &thread_current ()->elem, compare_priority, 0);
+		// list_push_back (&sema->waiters, &thread_current ()->elem);
 		thread_block ();
 	}
 	sema->value--;
@@ -206,8 +232,15 @@ lock_try_acquire (struct lock *lock) {
 	ASSERT (!lock_held_by_current_thread (lock));
 
 	success = sema_try_down (&lock->semaphore);
-	if (success)
+	if (success) {
 		lock->holder = thread_current ();
+	} else {
+		//priority
+		if (lock -> holder -> priority < thread_current() -> priority) {
+			lock -> holder -> priority_donated = thread_current() -> priority;
+		}
+	}
+		
 	return success;
 }
 
@@ -221,6 +254,10 @@ void
 lock_release (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (lock_held_by_current_thread (lock));
+	//priority
+	if (lock -> holder -> priority_donated != -1) {
+		lock -> holder -> priority_donated = -1;
+	}
 
 	lock->holder = NULL;
 	sema_up (&lock->semaphore);

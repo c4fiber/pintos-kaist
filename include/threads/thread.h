@@ -91,6 +91,8 @@ struct thread {
 	enum thread_status status;          /* Thread state. */
 	char name[16];                      /* Name (for debugging purposes). */
 	int priority;                       /* Priority. */
+	//priority
+	int priority_donated;               /* temporary priority (if donated)*/
 	struct list_elem owner;				/* owner thread -> elem of lock */
 
 	/* Shared between thread.c and synch.c. */
@@ -104,6 +106,7 @@ struct thread {
 	/* Table for whole virtual memory owned by thread. */
 	struct supplemental_page_table spt;
 #endif
+	//alarm_clock
 	int64_t wake_up;                    /* wake up for alarm clock*/
 	/* Owned by thread.c. */
 	struct intr_frame tf;               /* Information for switching */
