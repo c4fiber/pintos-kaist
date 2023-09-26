@@ -30,7 +30,7 @@ static struct list ready_list;
 
 /* List of processes in THREAD_BLOCKED state.
    blocked because of timer */
-static struct list blocked_list;
+static struct list sleep_list;
 
 /* Idle thread. */
 static struct thread *idle_thread;
@@ -112,7 +112,7 @@ thread_init (void) {
 	/* Init the globla thread context */
 	lock_init (&tid_lock);
 	list_init (&ready_list);
-	list_init (&blocked_list);
+	list_init (&sleep_list);
 	list_init (&destruction_req);
 
 	/* Set up a thread structure for the running thread. */
@@ -230,7 +230,7 @@ void thread_sleep(const int64_t wake_up_ticks) {
 
 	curr->wake_up_ticks = wake_up_ticks;
 	// list_remove(&curr->elem); // next_thread_to_run 에서 수행함
-	list_insert_ordered(&blocked_list, &curr->elem, less_then_func, 0);
+	list_insert_ordered(&sleep_list, &curr->elem, less_then_func, 0);
 
 	old_level = intr_disable();
 	thread_block();
@@ -243,9 +243,9 @@ void thread_wake_up(const int64_t ticks_now) {
 	struct thread *temp;
 
 	ASSERT (intr_get_level() == INTR_OFF);
-	
-	while (!list_empty(&blocked_list)) {
-		ptr = list_front(&blocked_list);
+
+	while (!list_empty(&sleep_list)) {
+		ptr = list_front(&sleep_list);
 		temp = list_entry(ptr, struct thread, elem);
 
 		if (temp->wake_up_ticks <= ticks_now) {
