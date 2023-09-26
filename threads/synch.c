@@ -50,25 +50,7 @@ sema_init (struct semaphore *sema, unsigned value) {
 }
 //priority
 static bool compare_priority (const struct list_elem *a, const struct list_elem *b, void *aux) {
-	// struct thread *alpha = list_entry(a, thread, elem);
-	// struct thread *beta = list_enrty(b, thread, elem);
-	// int priority_required_alpha;
-	// int priority_required_beta;
-
-	// if (alpha -> priority < alpha -> priority_donated) {
-	// 	priority_required_alpha = alpha -> priority_donated;
-	// } else {
-	// 	priority_required_alpha = alpha -> priority;
-	// }
-
-	// if (beta -> priority < beta -> priority_donated) {
-	// 	int priority_required_beta = beta -> priority_donated;
-	// } else {
-	// 	int priority_required_beta = beta -> priority;
-	// }
-
-	// return (priority_required_alpha < priority_required_beta);
-
+	
 	return (list_entry(a, struct thread, elem) -> priority) < (list_entry(b, struct thread, elem) -> priority);
 }
 
@@ -213,6 +195,13 @@ lock_acquire (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (!intr_context ());
 	ASSERT (!lock_held_by_current_thread (lock));
+	//priority
+	//priority donation
+	if (lock->holder != NULL && thread_current()->priority > lock->holder->priority) {
+        lock->holder->priority = thread_current()->priority;
+		printf("if!\n");
+        // 우선순위를 변경한 후, 적절한 자료 구조를 통해 관리해야 합니다.
+    }
 
 	sema_down (&lock->semaphore);
 	lock->holder = thread_current ();
@@ -234,13 +223,8 @@ lock_try_acquire (struct lock *lock) {
 	success = sema_try_down (&lock->semaphore);
 	if (success) {
 		lock->holder = thread_current ();
-	} else {
-		//priority
-		if (lock -> holder -> priority < thread_current() -> priority) {
-			lock -> holder -> priority_donated = thread_current() -> priority;
-		}
-	}
-		
+	} 
+	
 	return success;
 }
 
@@ -255,8 +239,9 @@ lock_release (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (lock_held_by_current_thread (lock));
 	//priority
-	if (lock -> holder -> priority_donated != -1) {
-		lock -> holder -> priority_donated = -1;
+	//우선순위 반환
+	if (thread_current()-> priority != thread_current() -> priority_original) {
+		thread_current() -> priority = thread_current() -> priority_original;
 	}
 
 	lock->holder = NULL;

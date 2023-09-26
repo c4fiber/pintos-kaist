@@ -92,7 +92,7 @@ struct thread {
 	char name[16];                      /* Name (for debugging purposes). */
 	int priority;                       /* Priority. */
 	//priority
-	int priority_donated;               /* temporary priority (if donated)*/
+	int priority_original;               /* temporary priority (if donated)*/
 	struct list_elem owner;				/* owner thread -> elem of lock */
 
 	/* Shared between thread.c and synch.c. */
