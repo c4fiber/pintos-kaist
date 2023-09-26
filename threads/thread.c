@@ -243,7 +243,7 @@ void thread_wake_up(const int64_t ticks_now) {
 	struct thread *temp;
 
 	ASSERT (intr_get_level() == INTR_OFF);
-	
+
 	while (!list_empty(&sleep_list)) {
 		ptr = list_front(&sleep_list);
 		temp = list_entry(ptr, struct thread, elem);
