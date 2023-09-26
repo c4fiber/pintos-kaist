@@ -1,2 +1,6 @@
 *.o
 *.d
+*.dsk
+*.bin
+
+**/build
