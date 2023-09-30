@@ -91,9 +91,12 @@ struct thread {
 	enum thread_status status;          /* Thread state. */
 	char name[16];                      /* Name (for debugging purposes). */
 	int priority;                       /* Priority. */
-	int original_priority;
-	struct list donated_list;
 	int64_t wake_up_ticks;
+
+	/* priority donation */
+	int original_priority;
+	struct list donor_list;
+	struct list_elem donor;
 
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
