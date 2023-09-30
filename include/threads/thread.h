@@ -92,6 +92,7 @@ struct thread {
 	char name[16];                      /* Name (for debugging purposes). */
 	int priority;                       /* Priority. */
 	int original_priority;
+	struct list donated_list;
 	int64_t wake_up_ticks;
 
 	/* Shared between thread.c and synch.c. */

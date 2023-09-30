@@ -32,8 +32,8 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 
-/* Priority DESC */
-static bool prio_desc (struct list_elem *a, struct list_elem *b) {
+/* Priority ASC */
+static bool prio_asc (struct list_elem *a, struct list_elem *b) {
 	return list_entry(a, struct thread, elem)->priority < 
 			list_entry(b, struct thread, elem)->priority;
 }
@@ -72,7 +72,7 @@ sema_down (struct semaphore *sema) {
 
 	old_level = intr_disable ();
 	while (sema->value == 0) {
-		list_push_back (&sema->waiters, &thread_current ()->elem);
+		list_insert_ordered (&sema->waiters, &thread_current ()->elem, prio_asc, 0);
 		thread_block ();
 	}
 	sema->value--;
@@ -115,9 +115,9 @@ sema_up (struct semaphore *sema) {
 	ASSERT (sema != NULL);
 
 	old_level = intr_disable ();
-	list_sort(&sema->waiters, prio_desc, 0);
 	if (!list_empty (&sema->waiters)) {
-		thread_unblock (list_entry (list_pop_front (&sema->waiters),
+		list_sort(&sema->waiters, prio_asc, 0);
+		thread_unblock (list_entry (list_pop_back (&sema->waiters),
 					struct thread, elem));
 	}
 	sema->value++;
@@ -182,6 +182,22 @@ lock_init (struct lock *lock) {
 	sema_init (&lock->semaphore, 1);
 }
 
+/* 하위 1비트 set 여부에 관계없이 holder의 주소 가져오기 */
+static struct thread *get_holder(struct lock *lock) {
+	return (struct thread *)((unsigned long)lock->holder & ~1UL);
+}
+
+/* donation 여부에 따라 lock->holder의 하위 1비트를 set함 */
+static bool set_donated(struct lock *lock) {
+	lock->holder = (struct thread *)((unsigned long)lock->holder | 1UL);
+
+	return true;
+}
+
+static bool check_donated(struct lock *lock) {
+	return (unsigned long)lock->holder & 1UL;
+}
+
 /* Acquires LOCK, sleeping until it becomes available if
    necessary.  The lock must not already be held by the current
    thread.
@@ -192,9 +208,17 @@ lock_init (struct lock *lock) {
    we need to sleep. */
 void
 lock_acquire (struct lock *lock) {
+	struct thread *holder = get_holder(lock);
+
 	ASSERT (lock != NULL);
 	ASSERT (!intr_context ());
 	ASSERT (!lock_held_by_current_thread (lock));
+
+	// lock holder가 있고 priority 가 낮은 애라면 donation
+	if (holder != NULL && holder->priority < thread_get_priority ()) {
+		holder->priority = thread_get_priority ();
+		set_donated(lock);// holder가 가진 값의 하위 1bit를 set
+	}
 
 	sema_down (&lock->semaphore);
 	lock->holder = thread_current ();
@@ -227,11 +251,19 @@ lock_try_acquire (struct lock *lock) {
    handler. */
 void
 lock_release (struct lock *lock) {
+	bool is_donated;
+
 	ASSERT (lock != NULL);
 	ASSERT (lock_held_by_current_thread (lock));
 
+	is_donated = check_donated(lock);
 	lock->holder = NULL;
 	sema_up (&lock->semaphore);
+
+	// 내가 donation을 받았다면 원상복구 한다.
+	if (is_donated) {
+		thread_set_priority(thread_current ()->original_priority);
+	}
 }
 
 /* Returns true if the current thread holds LOCK, false
@@ -241,7 +273,7 @@ bool
 lock_held_by_current_thread (const struct lock *lock) {
 	ASSERT (lock != NULL);
 
-	return lock->holder == thread_current ();
+	return get_holder(lock) == thread_current ();
 }
 
 /* One semaphore in a list. */
