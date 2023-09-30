@@ -89,7 +89,7 @@ static bool wake_up_ticks_asc(struct list_elem *a, struct list_elem *b, void *au
 			list_entry(b, struct thread, elem)->wake_up_ticks;
 }
 
-static bool priority_desc (struct list_elem *a, struct list_elem *b, void *aux) {
+static bool priority_asc (struct list_elem *a, struct list_elem *b, void *aux) {
 	return list_entry(a, struct thread, elem)->priority < 
 			list_entry(b, struct thread, elem)->priority;
 }
@@ -470,6 +470,7 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;
+	t->original_priority = priority;
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
@@ -483,7 +484,7 @@ next_thread_to_run (void) {
 		return idle_thread;
 	else {
 		// priority scheduling
-		struct list_elem *top_priority_elem = list_max(&ready_list, priority_desc, 0);
+		struct list_elem *top_priority_elem = list_max(&ready_list, priority_asc, 0);
 		list_remove(top_priority_elem);
 		return list_entry (top_priority_elem, struct thread, elem);
 	}
