@@ -46,6 +46,7 @@ void sema_init(struct semaphore *sema, unsigned value) {
 
     sema->value = value;
     list_init(&sema->waiters);
+    sema->type = SEMA_ONLY;
 }
 
 /* Down or "P" operation on a semaphore.  Waits for SEMA's value
@@ -174,6 +175,7 @@ void lock_init(struct lock *lock) {
 
     lock->holder = NULL;
     sema_init(&lock->semaphore, 1);
+    lock->semaphore.type = LOCK;
 }
 
 /* lock holder의 하위 1비트 set에 따라 donation 여부 확인 */
@@ -350,6 +352,7 @@ void cond_init(struct condition *cond) {
    we need to sleep. */
 void cond_wait(struct condition *cond, struct lock *lock) {
     struct semaphore_elem waiter;
+    waiter.semaphore.type = SEMA_ELEM;
 
     ASSERT(cond != NULL);
     ASSERT(lock != NULL);
