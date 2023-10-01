@@ -487,3 +487,13 @@ list_min (struct list *list, list_less_func *less, void *aux) {
 	}
 	return min;
 }
+
+// find list pointer that list elem is in without all list
+struct list *find_list_contains_elem(struct list_elem *elem) {
+	struct list_elem *e;
+	for (e = elem; e != NULL; e = e->prev) {
+		if (is_head(e)) {
+			return list_entry(e, struct list, head);
+		}
+	}
+}
