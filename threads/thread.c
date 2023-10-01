@@ -89,7 +89,7 @@ static bool wake_up_ticks_asc(struct list_elem *a, struct list_elem *b,
            list_entry(b, struct thread, elem)->wake_up_ticks;
 }
 
-static bool priority_asc(struct list_elem *a, struct list_elem *b, void *aux) {
+bool prio_asc(struct list_elem *a, struct list_elem *b, void *aux) {
     return list_entry(a, struct thread, elem)->priority <
            list_entry(b, struct thread, elem)->priority;
 }
@@ -349,6 +349,7 @@ void thread_yield(void) {
 
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void thread_set_priority(int new_priority) {
+    // TODO 내 priority를 낮추려고 시도해도 donor가 있는 한 못낮춘다.
     thread_current()->priority = new_priority;
 
     // preempt
@@ -440,6 +441,7 @@ static void init_thread(struct thread *t, const char *name, int priority) {
     t->priority = priority;
     t->magic = THREAD_MAGIC;
     t->original_priority = priority;
+    list_init(&t->donor_list);
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
@@ -453,7 +455,7 @@ static struct thread *next_thread_to_run(void) {
     else {
         // priority scheduling
         struct list_elem *top_priority_elem =
-            list_max(&ready_list, priority_asc, 0);
+            list_max(&ready_list, prio_asc, 0);
         list_remove(top_priority_elem);
         return list_entry(top_priority_elem, struct thread, elem);
     }

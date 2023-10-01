@@ -152,5 +152,11 @@ void do_iret (struct intr_frame *tf);
 void thread_sleep(const int64_t);
 void thread_wake_up(const int64_t);
 
+/* helper functions & macros */
+#ifndef MAX
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
+#endif
+
+bool prio_asc(struct list_elem *, struct list_elem *, void *);
 
 #endif /* threads/thread.h */
