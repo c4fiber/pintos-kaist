@@ -349,9 +349,24 @@ void thread_yield(void) {
 
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void thread_set_priority(int new_priority) {
-    // TODO 내 priority를 낮추려고 시도해도 donor가 있는 한 못낮춘다.
-    thread_current()->priority = new_priority;
+    thread_current()->original_priority = new_priority;
 
+    // donor가 없으면 주어진 값으로, 아니면 최대값으로 설정한다.
+    if (list_empty(&thread_current()->donor_list)) {
+        thread_current()->priority = new_priority;
+    } else {
+        int top_priority = -1;
+        struct list_elem *_donor = list_head(&thread_current()->donor_list);
+
+        // priority donation 중 가장 높은 priority로 세팅한다.
+        while ((_donor = list_next(_donor)) !=
+               list_end(&thread_current()->donor_list)) {
+            top_priority =
+                MAX(list_entry(_donor, struct thread, donor)->priority,
+                    top_priority);
+        }
+        thread_current()->priority = MAX(new_priority, top_priority);
+    }
     // preempt
     thread_yield();
 }

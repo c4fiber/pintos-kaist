@@ -218,9 +218,8 @@ void lock_acquire(struct lock *lock) {
     if (holder != NULL && holder->original_priority < thread_get_priority()) {
         struct thread *donor_thread = find_donor_in_waiters(lock);
 
-        switch (
-            (unsigned long)check_donated(lock) << 1 |
-            (unsigned long)(holder->priority < thread_get_priority())) {
+        switch ((unsigned long)check_donated(lock) << 1 |
+                (unsigned long)(holder->priority < thread_get_priority())) {
 
         case 0b10:
             // donation이 수행되었고 현재 스레드보다 높은 priority 이다.
@@ -286,25 +285,7 @@ void lock_release(struct lock *lock) {
     if (is_donated) {
         ASSERT(donor_thread != NULL);
         list_remove(&donor_thread->donor); // 나에게 donate한 thread는 제거
-
-        // case 1. 다른 lock에 대해 donate 받은적이 있나?
-        if (!list_empty(&thread_current()->donor_list)) {
-            int top_priority = -1;
-            struct list_elem *_donor = list_head(&thread_current()->donor_list);
-            
-            // priority donation 중 가장 높은 priority로 세팅한다.
-            while ((_donor = list_next(_donor)) !=
-                   list_end(&thread_current()->donor_list)) {
-                top_priority =
-                    MAX(list_entry(_donor, struct thread, donor)->priority,
-                        top_priority);
-            }
-            thread_set_priority(top_priority);
-        }
-        // case 2. 이외에 donation을 받은 적이 없다.
-        else {
-            thread_set_priority(thread_current()->original_priority);
-        }
+        thread_set_priority(thread_current()->original_priority);
     }
 }
 
