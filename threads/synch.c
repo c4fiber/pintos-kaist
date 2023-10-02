@@ -211,7 +211,7 @@ static struct thread *find_donor(struct lock *lock) {
     while (donor != list_end(donor_list)) {
         donor_thread = list_entry(donor, struct thread, donor);
         if (donor_thread->requesting_lock == lock) {
-            printf("donor_thread: %s\n", donor_thread->name);
+            // printf("donor_thread: %s\n", donor_thread->name);
             return donor_thread;
         }
         donor = list_next(donor);
@@ -222,14 +222,15 @@ static struct thread *find_donor(struct lock *lock) {
 }
 
 /* lock holder에게 priority donation 수행 */
-static void priority_donate(struct lock *lock) {
+static void priority_donate(struct lock *lock, struct thread* donee) {
     struct thread *holder = get_holder(lock);
     struct thread *donor_thread = find_donor(lock);
+    // printf("priority donation by %s to %s\n", thread_current()->name, holder->name);
 
     ASSERT(holder != NULL);
 
     switch ((int)check_donated(lock) << 1 |
-            (int)(holder->priority < thread_get_priority())) {
+            (int)(holder->priority < get_target_priority(donee))) {
 
     case 0b10:
         // donation이 수행되었고 현재 스레드보다 높은 priority 이다.
@@ -245,7 +246,7 @@ static void priority_donate(struct lock *lock) {
         holder->priority = thread_get_priority();
     case 0b00:
         // donation X, 나보다 priority가 높다. -> donation만 수행
-        list_push_back(&holder->donor_list, &thread_current()->donor);
+        list_push_back(&holder->donor_list, &donee->donor);
         set_donated(lock);
     }
 }
@@ -261,6 +262,7 @@ static void priority_donate(struct lock *lock) {
 void lock_acquire(struct lock *lock) {
     struct lock *_lock = lock;
     struct thread *holder = get_holder(lock);
+    struct thread *donee = thread_current();
 
     ASSERT(lock != NULL);
     ASSERT(!intr_context());
@@ -268,9 +270,10 @@ void lock_acquire(struct lock *lock) {
 
     // priority donation until holder->requesting_lock == NULL
     while (holder != NULL &&
-           holder->original_priority < thread_get_priority()) {
-        priority_donate(_lock);
+           holder->original_priority < get_target_priority(donee)) {
+        priority_donate(_lock, donee);
         _lock = holder->requesting_lock;
+        donee = holder;
         holder = get_holder(_lock);
     }
     thread_current()->requesting_lock = lock;

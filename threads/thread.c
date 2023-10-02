@@ -374,6 +374,10 @@ void thread_set_priority(int new_priority) {
 /* Returns the current thread's priority. */
 int thread_get_priority(void) { return thread_current()->priority; }
 
+int get_target_priority(struct thread *target) {
+    return target->priority;
+}
+
 /* Sets the current thread's nice value to NICE. */
 void thread_set_nice(int nice UNUSED) {
     /* TODO: Your implementation goes here */

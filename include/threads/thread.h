@@ -142,6 +142,7 @@ void thread_yield (void);
 
 int thread_get_priority (void);
 void thread_set_priority (int);
+int get_target_priority(struct thread *t);
 
 int thread_get_nice (void);
 void thread_set_nice (int);
