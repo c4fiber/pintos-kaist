@@ -180,6 +180,8 @@ void lock_init(struct lock *lock) {
 
 /* lock holder의 하위 1비트 set에 따라 donation 여부 확인 */
 static struct thread *get_holder(struct lock *lock) {
+    if (lock == NULL)
+        return NULL;
     return (struct thread *)((unsigned long)lock->holder & ~1UL);
 }
 
@@ -187,7 +189,9 @@ static void set_donated(struct lock *lock) {
     lock->holder = (struct thread *)((unsigned long)lock->holder | 1UL);
 }
 
+/* 해당 lock에 의해 donation 받았는지 여부를 확인 */
 static bool check_donated(struct lock *lock) {
+    ASSERT(lock != NULL);
     return (bool)((unsigned long)lock->holder & 1UL);
 }
 
@@ -195,28 +199,37 @@ static bool check_donated(struct lock *lock) {
  *  - donation을 받았다. -> donation을 준 스레드의 주소 반환
  *  - donation을 안 받았다. -> NULL 반환
  */
-static struct thread *find_donor_in_waiters(struct lock *lock) {
+static struct thread *find_donor(struct lock *lock) {
     struct list *donor_list = &get_holder(lock)->donor_list;
-    struct list_elem *donor = list_head(donor_list);
-    struct thread *temp;
+    struct list_elem *donor = list_begin(donor_list);
+    struct thread *donor_thread;
 
-    while ((donor = list_next(donor)) != list_end(donor_list)) {
-        temp = list_entry(list_max(&lock->semaphore.waiters, prio_asc, 0),
-                          struct thread, elem);
-        if (&temp->donor == donor) {
-            return temp;
+    if (check_donated(lock))
+        ASSERT(!list_empty(donor_list));
+
+    // find donor match in lock waiters
+    while (donor != list_end(donor_list)) {
+        donor_thread = list_entry(donor, struct thread, donor);
+        if (donor_thread->requesting_lock == lock) {
+            printf("donor_thread: %s\n", donor_thread->name);
+            return donor_thread;
         }
+        donor = list_next(donor);
     }
     // donor가 없다 == 현재의 lock을 풀기위해 priority donation을 받은적이 없다.
+    ASSERT(!check_donated(lock));
     return NULL;
 }
 
+/* lock holder에게 priority donation 수행 */
 static void priority_donate(struct lock *lock) {
     struct thread *holder = get_holder(lock);
-    struct thread *donor_thread = find_donor_in_waiters(lock);
+    struct thread *donor_thread = find_donor(lock);
 
-    switch ((unsigned long)check_donated(lock) << 1 |
-            (unsigned long)(holder->priority < thread_get_priority())) {
+    ASSERT(holder != NULL);
+
+    switch ((int)check_donated(lock) << 1 |
+            (int)(holder->priority < thread_get_priority())) {
 
     case 0b10:
         // donation이 수행되었고 현재 스레드보다 높은 priority 이다.
@@ -246,19 +259,24 @@ static void priority_donate(struct lock *lock) {
    interrupts disabled, but interrupts will be turned back on if
    we need to sleep. */
 void lock_acquire(struct lock *lock) {
+    struct lock *_lock = lock;
     struct thread *holder = get_holder(lock);
 
     ASSERT(lock != NULL);
     ASSERT(!intr_context());
     ASSERT(!lock_held_by_current_thread(lock));
 
-    /* lock holder가 있고 original priority 가 낮은 애라면 donation */
-    if (holder != NULL && holder->original_priority < thread_get_priority()) {
-        priority_donate(lock);
+    // priority donation until holder->requesting_lock == NULL
+    while (holder != NULL &&
+           holder->original_priority < thread_get_priority()) {
+        priority_donate(_lock);
+        _lock = holder->requesting_lock;
+        holder = get_holder(_lock);
     }
-
+    thread_current()->requesting_lock = lock;
     sema_down(&lock->semaphore);
     lock->holder = thread_current();
+    thread_current()->requesting_lock = NULL;
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -293,15 +311,15 @@ void lock_release(struct lock *lock) {
     ASSERT(lock_held_by_current_thread(lock));
 
     is_donated = check_donated(lock);
-    donor_thread = find_donor_in_waiters(lock);
+    donor_thread = find_donor(lock);
 
     lock->holder = NULL;
     sema_up(&lock->semaphore);
 
-    /* 내가 donation을 받았다면 원상복구 한다. */
+    /* 내가 donation을 받았다면 제거하고 priority를 재설정 한다. */
     if (is_donated) {
         ASSERT(donor_thread != NULL);
-        list_remove(&donor_thread->donor); // 나에게 donate한 thread는 제거
+        list_remove(&donor_thread->donor);
         thread_set_priority(thread_current()->original_priority);
     }
 }

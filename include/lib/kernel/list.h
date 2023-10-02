@@ -162,5 +162,7 @@ struct list_elem *list_min (struct list *, list_less_func *, void *aux);
 
 /* Returns list contains elem */
 struct list *find_list_contains_elem(struct list_elem *);
+struct list_elem *list_find(struct list *, struct list_elem *);
+
 
 #endif /* lib/kernel/list.h */

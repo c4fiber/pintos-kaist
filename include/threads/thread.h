@@ -97,6 +97,7 @@ struct thread {
 	int original_priority;
 	struct list donor_list;
 	struct list_elem donor;
+	struct lock *requesting_lock;
 
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
