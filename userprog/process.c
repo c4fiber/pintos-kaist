@@ -179,6 +179,9 @@ process_exec (void *f_name) {
 	/* And then load the binary */
 	success = load (file_name, &_if);
 
+	/* load failed */
+	ASSERT (success);
+
 	/* If load failed, quit. */
 	palloc_free_page (file_name);
 	if (!success)
@@ -329,6 +332,18 @@ load (const char *file_name, struct intr_frame *if_) {
 	bool success = false;
 	int i;
 
+	/* Parse arguments */
+	char *argv[128];
+	memset(argv, 0, sizeof(argv));	
+	char *save_ptr = NULL;
+	char *token = strtok_r(file_name, " ", &save_ptr);;
+	uint64_t argc = 0;
+
+	while (token != NULL) {
+		argv[argc++] = token;
+		token = strtok_r(NULL, " ", &save_ptr);
+	}
+
 	/* Allocate and activate page directory. */
 	t->pml4 = pml4_create ();
 	if (t->pml4 == NULL)
@@ -336,7 +351,7 @@ load (const char *file_name, struct intr_frame *if_) {
 	process_activate (thread_current ());
 
 	/* Open executable file. */
-	file = filesys_open (file_name);
+	file = filesys_open (argv[0]);
 	if (file == NULL) {
 		printf ("load: %s: open failed\n", file_name);
 		goto done;
