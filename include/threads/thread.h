@@ -92,6 +92,12 @@ struct thread {
 	char name[16];                      /* Name (for debugging purposes). */
 	int priority;                       /* Priority. */
 	int64_t wake_up_ticks;
+  
+	/* priority donation */
+	int original_priority;
+	struct list donor_list;
+	struct list_elem donor;
+	struct lock *requesting_lock;
 
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
@@ -136,6 +142,7 @@ void thread_yield (void);
 
 int thread_get_priority (void);
 void thread_set_priority (int);
+int get_target_priority(struct thread *t);
 
 int thread_get_nice (void);
 void thread_set_nice (int);
@@ -147,5 +154,11 @@ void do_iret (struct intr_frame *tf);
 void thread_sleep(const int64_t);
 void thread_wake_up(const int64_t);
 
+/* helper functions & macros */
+#ifndef MAX
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
+#endif
+
+bool prio_asc(struct list_elem *, struct list_elem *, void *);
 
 #endif /* threads/thread.h */
