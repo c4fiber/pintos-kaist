@@ -92,7 +92,7 @@ struct thread {
 	char name[16];                      /* Name (for debugging purposes). */
 	int priority;                       /* Priority. */
 	int64_t wake_up_ticks;
-
+  
 	/* priority donation */
 	int original_priority;
 	struct list donor_list;
