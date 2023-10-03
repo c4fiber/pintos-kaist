@@ -189,6 +189,10 @@ static void set_donated(struct lock *lock) {
     lock->holder = (struct thread *)((unsigned long)lock->holder | 1UL);
 }
 
+static void clear_donated(struct lock *lock) {
+    lock->holder = (struct thread *)((unsigned long)lock->holder & ~1UL);
+}
+
 /* 해당 lock에 의해 donation 받았는지 여부를 확인 */
 static bool check_donated(struct lock *lock) {
     ASSERT(lock != NULL);
@@ -324,6 +328,7 @@ void lock_release(struct lock *lock) {
         ASSERT(donor_thread != NULL);
         list_remove(&donor_thread->donor);
         thread_set_priority(thread_current()->original_priority);
+        clear_donated(lock);
     }
 }
 
