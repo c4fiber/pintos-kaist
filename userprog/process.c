@@ -335,10 +335,42 @@ load (const char *file_name, struct intr_frame *if_) {
 		goto done;
 	process_activate (thread_current ());
 
+	//argument passing
+	char *argv[128];
+	memset(argv, 0, sizeof(argv));
+	char *save_ptr;
+	//strtok_r() 함수를 이용하여 공백으로 구분된 문자열을 공백을 기준으로 token으로 나눔.
+	char *token = strtok_r((char *)file_name, " ", &save_ptr); 
+	uint64_t argc = 1;
+	char program_name = NULL;
+
+	if (token != NULL) {
+		//file_name의 첫번째 단어는 program_name
+		program_name = token;
+
+		//인자의 갯수를 알기 위해서 반복문을 돌려 token이 NULL이 될 때 까지 token의 개수를 센다.
+		while (token != NULL) {
+			token = strtok_r(NULL, " ", &save_ptr);
+			argc++;
+		}
+
+		ASSERT (argv != NULL);
+		//argv 배열에 인자를 넣기 위해 다시 한 번 나누기
+		token = strtok_r((char *)file_name, " ", &save_ptr);
+
+		for (int i = 0; i < argc; i++) {
+			argv[i] = token;
+			token = strtok_r(NULL, " ", &save_ptr);
+		}
+
+		/* Set the last element of argv to NULL. */
+    	argv[argc] = NULL;
+	}
+
 	/* Open executable file. */
-	file = filesys_open (file_name);
+	file = filesys_open (program_name);
 	if (file == NULL) {
-		printf ("load: %s: open failed\n", file_name);
+		printf ("load: %s: open failed\n", program_name);
 		goto done;
 	}
 
@@ -418,38 +450,6 @@ load (const char *file_name, struct intr_frame *if_) {
 	 * TODO: Implement argument passing (see project2/argument_passing.html). */
 	 //USER_STACK = 0x47480000
 
-	//argument passing
-	char *argv[128];
-	memset(argv, 0, sizeof(argv));
-	char *save_ptr;
-	//strtok_r() 함수를 이용하여 공백으로 구분된 문자열을 공백을 기준으로 token으로 나눔.
-	char *token = strtok_r((char *)file_name, " ", &save_ptr); 
-	uint64_t argc = 1;
-	char program_name = NULL;
-
-	if (token != NULL) {
-		//file_name의 첫번째 단어는 program_name
-		program_name = token;
-
-		//인자의 갯수를 알기 위해서 반복문을 돌려 token이 NULL이 될 때 까지 token의 개수를 센다.
-		while (token != NULL) {
-			token = strtok_r(NULL, " ", &save_ptr);
-			argc++;
-		}
-
-		ASSERT (argv != NULL);
-		//argv 배열에 인자를 넣기 위해 다시 한 번 나누기
-		token = strtok_r((char *)file_name, " ", &save_ptr);
-
-		for (int i = 0; i < argc; i++) {
-			argv[i] = token;
-			token = strtok_r(NULL, " ", &save_ptr);
-		}
-
-		/* Set the last element of argv to NULL. */
-    	argv[argc] = NULL;
-	}
-
 	uint64_t *esp = if_->rsp = USER_STACK;
 	for (int i = argc - 1; i >= 0; i--) {
 		esp -= (strlen(argv[i]) + 1);
@@ -493,13 +493,7 @@ static bool
 validate_segment (const struct Phdr *phdr, struct file *file) {
 	/* p_offset and p_vaddr must have the same page offset. */
 	if ((phdr->p_offset & PGMASK) != (phdr->p_vaddr & PGMASK))
-		return false;
-
-	/* p_offset must point within FILE. */
-	if (phdr->p_offset > (uint64_t) file_length (file))
-		return false;
-
-	/* p_memsz must be at least as big as p_filesz. */
+		return false; N
 	if (phdr->p_memsz < phdr->p_filesz)
 		return false;
 
