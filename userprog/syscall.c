@@ -41,6 +41,84 @@ syscall_init (void) {
 void
 syscall_handler (struct intr_frame *f UNUSED) {
 	// TODO: Your implementation goes here.
-	printf ("system call!\n");
-	thread_exit ();
+	/**
+	 * get argument from f
+	 * %rax: system call number
+	 * argumnets: %rdi, %rsi, %rdx, %r10, %r8, %r9
+	 * return value: %rax
+	 */
+
+	// get system call number
+	uint64_t syscall_num = f->R.rax;
+	char *argv[6];
+	memset(argv, 0, sizeof(argv));
+	int argc = 0;
+
+	// get arguments
+	argv[0] = f->R.rdi;
+	argv[1] = f->R.rsi;
+	argv[2] = f->R.rdx;
+	argv[3] = f->R.r10;
+	argv[4] = f->R.r8;
+	argv[5] = f->R.r9;
+
+	// get argc
+	while (argv[argc] != NULL) {
+		argc++;
+	}
+
+	// call system call
+	switch (syscall_num) {
+	case SYS_HALT:
+		power_off();
+		break;
+	case SYS_EXIT:
+		// print exit message thread_name: exit(status_code)
+		// TODO 수정 필요함
+		printf("%s: exit(%d)\n", thread_current()->name, argv[0]);
+		thread_exit();
+		f->R.rax = argv[0];
+		break;
+	case SYS_FORK:
+		// TODO f->R.rax = fork(argv[0]);
+		break;
+	case SYS_EXEC:
+		// TODO 
+		// thread_create(argv[0], PRI_DEFAULT, argv[0], 0);
+		break;
+	case SYS_WAIT:
+		//f->R.rax = wait(argv[0]);
+		break;
+	case SYS_CREATE:
+		//f->R.rax = create(argv[0], argv[1]);
+		break;
+	case SYS_REMOVE:
+		//f->R.rax = remove(argv[0]);
+		break;
+	case SYS_OPEN:
+		//f->R.rax = open(argv[0]);
+		break;
+	case SYS_FILESIZE:
+		//f->R.rax = filesize(argv[0]);
+		break;
+	case SYS_READ:
+		//f->R.rax = read(argv[0], argv[1], argv[2]);
+		break;
+	case SYS_WRITE:
+		// f->R.rax = write(argv[0], argv[1], argv[2]);
+		putbuf(f->R.rsi, f->R.rdx);
+		break;
+	case SYS_SEEK:
+		//seek(argv[0], argv[1]);
+		break;
+	case SYS_TELL:
+		//f->R.rax = tell(argv[0]);
+		break;
+	case SYS_CLOSE:
+		//close(argv[0]);
+		break;
+	}
+
+	// printf ("system call!\n");
+	// thread_exit ();
 }
