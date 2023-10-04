@@ -107,9 +107,9 @@ void sema_up(struct semaphore *sema) {
 
     old_level = intr_disable();
     if (!list_empty(&sema->waiters)) {
-        list_sort(&sema->waiters, prio_asc, 0);
+        struct list_elem *max_prio_elem = list_max(&sema->waiters, prio_asc, 0);
         yield_for_next =
-            list_entry(list_back(&sema->waiters), struct thread, elem)
+            list_entry(max_prio_elem, struct thread, elem)
                         ->priority > thread_current()->priority
                 ? true
                 : false;
@@ -120,7 +120,11 @@ void sema_up(struct semaphore *sema) {
     intr_set_level(old_level);
 
     if (yield_for_next) {
-        thread_yield();
+        if (intr_context()) {
+            intr_yield_on_return();
+        } else {
+            thread_yield();
+        }
     }
 }
 
