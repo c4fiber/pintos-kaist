@@ -417,6 +417,35 @@ load (const char *file_name, struct intr_frame *if_) {
 	/* TODO: Your code goes here.
 	 * TODO: Implement argument passing (see project2/argument_passing.html). */
 
+	//argument passing
+	char *argv[128];
+	memset(argv, 0, sizeof(argv));
+	char *save_ptr;
+	//strtok_r() 함수를 이용하여 공백으로 구분된 문자열을 공백을 기준으로 token으로 나눔.
+	char *token = strtok_r((char *)file_name, " ", &save_ptr); 
+	uint64_t argc = 0;
+	char program_name = NULL;
+
+	if (token != NULL) {
+		//file_name의 첫번째 단어는 program_name
+		program_name = token;
+
+		//인자의 갯수를 알기 위해서 반복문을 돌려 token이 NULL이 될 때 까지 token의 개수를 센다.
+		while (token != NULL) {
+			token = strtok_r(NULL, " ", &save_ptr);
+			argc++;
+		}
+
+		ASSERT (argv != NULL);
+		//argv 배열에 인자를 넣기 위해 다시 한 번 나누기
+		token = strtok_r((char *)file_name, " ", &save_ptr);
+
+		for (int i = 0; i < (argc + 1); i++) {
+			argv[i] = token;
+			token = strtok_r(NULL, " ", &save_ptr);
+		}
+	}
+
 	success = true;
 
 done:
