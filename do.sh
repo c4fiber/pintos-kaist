@@ -2,9 +2,9 @@
 
 source ./activate
 
-cd threads
+cd userprog
 make clean && make
 
 cd build
 
-pintos -- -q run priority-donate-nest
+pintos -- -q run args

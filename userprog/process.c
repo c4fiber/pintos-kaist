@@ -416,6 +416,7 @@ load (const char *file_name, struct intr_frame *if_) {
 
 	/* TODO: Your code goes here.
 	 * TODO: Implement argument passing (see project2/argument_passing.html). */
+	 //USER_STACK = 0x47480000
 
 	//argument passing
 	char *argv[128];
@@ -423,7 +424,7 @@ load (const char *file_name, struct intr_frame *if_) {
 	char *save_ptr;
 	//strtok_r() 함수를 이용하여 공백으로 구분된 문자열을 공백을 기준으로 token으로 나눔.
 	char *token = strtok_r((char *)file_name, " ", &save_ptr); 
-	uint64_t argc = 0;
+	uint64_t argc = 1;
 	char program_name = NULL;
 
 	if (token != NULL) {
@@ -440,11 +441,42 @@ load (const char *file_name, struct intr_frame *if_) {
 		//argv 배열에 인자를 넣기 위해 다시 한 번 나누기
 		token = strtok_r((char *)file_name, " ", &save_ptr);
 
-		for (int i = 0; i < (argc + 1); i++) {
+		for (int i = 0; i < argc; i++) {
 			argv[i] = token;
 			token = strtok_r(NULL, " ", &save_ptr);
 		}
+
+		/* Set the last element of argv to NULL. */
+    	argv[argc] = NULL;
 	}
+
+	uint64_t *esp = if_->rsp = USER_STACK;
+	for (int i = argc - 1; i >= 0; i--) {
+		esp -= (strlen(argv[i]) + 1);
+		strlcpy((char *)esp, argv[i], strlen(argv[i]) + 1);
+		argv[i] = (char *)esp;
+	}
+
+	char *null_ptr = NULL;
+	esp -= sizeof(char *); //NULL pointer
+	*((char **)esp) = null_ptr;
+
+	for (int i = argc - 1; i >= 0; i--) {
+		esp -= sizeof(char *);
+		*((int *)esp) = argv[i];
+	}
+
+	char **argv_ptr = (char **) esp;
+	esp -= sizeof(char **);
+	*((char ***)esp) = argv_ptr;
+
+	esp -= sizeof(int);
+	*((int *)esp) = argc;
+
+	esp -= sizeof(void *);
+	*((void **)esp) = 0x0;
+
+	if_ -> rsp = esp; 
 
 	success = true;
 
