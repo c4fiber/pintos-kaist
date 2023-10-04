@@ -176,8 +176,14 @@ process_exec (void *f_name) {
 	/* We first kill the current context */
 	process_cleanup ();
 
+	// before parsing
+	// printf("file_name: %s\n", file_name);
+
 	/* And then load the binary */
 	success = load (file_name, &_if);
+
+	// after parsing
+	// printf("file_name: %s\n", file_name);
 
 	/* load failed */
 	ASSERT (success);
@@ -333,10 +339,11 @@ load (const char *file_name, struct intr_frame *if_) {
 	int i;
 
 	/* Parse arguments */
+	uint64_t len_include_args = strlen(file_name) + 1;
 	char *argv[128];
 	memset(argv, 0, sizeof(argv));	
 	char *save_ptr = NULL;
-	char *token = strtok_r(file_name, " ", &save_ptr);;
+	char *token = strtok_r(file_name, " ", &save_ptr);
 	uint64_t argc = 0;
 
 	while (token != NULL) {
@@ -351,7 +358,7 @@ load (const char *file_name, struct intr_frame *if_) {
 	process_activate (thread_current ());
 
 	/* Open executable file. */
-	file = filesys_open (argv[0]);
+	file = filesys_open (file_name);
 	if (file == NULL) {
 		printf ("load: %s: open failed\n", file_name);
 		goto done;
@@ -431,6 +438,46 @@ load (const char *file_name, struct intr_frame *if_) {
 
 	/* TODO: Your code goes here.
 	 * TODO: Implement argument passing (see project2/argument_passing.html). */
+
+	// stack 공간확보 -> rsp를 아래로 이동 (uint64_t 이므로 -1당 1씩 빠진다)
+	if_->rsp = (uintptr_t)((uint64_t) if_->rsp - ROUND_UP(len_include_args, 8)); // 공간 확보
+
+	/* Put argv[i][...] into stack */
+	uint64_t write_point = if_->rsp;
+	for (int i = 0; i < argc; i++) {
+		uint64_t len = strlen(argv[i]) + 1;
+		memcpy((void *) write_point, (void *) argv[i], len);
+		argv[i] = write_point; // stack에서의 argv[i]가 저장된 주소를 argv[i]에 저장
+
+		// printf("argv[%d] place in 0x%p\n", i, argv[i]);
+		write_point += len; // 다음 복사위치로 이동
+	}
+	
+	/* Put argv[i] into stack */
+	// 현재 argv[i] 에는 stack에서의 인자가 저장된 주소를 가지고 있다. ex) %rsp + 11
+	for (int i = argc; i >= 0; i--) {
+		if_->rsp -= sizeof(uint64_t);
+		memcpy((void *) if_->rsp, (void *) &argv[i], sizeof(uint64_t));
+		// printf("put 0x%p into rsp: 0x%p\n", argv[i], (char *) if_->rsp);
+	}
+
+	/* Put return address (0) */
+	if_->rsp -= sizeof(uint64_t);
+	memset((void *) if_->rsp, 0, sizeof(uint64_t));
+
+	/* Put argc, argv into register */
+	// %rdi       %rsi, %rdx, %rcx, %r8, %r9
+	// argc, argv  [0]   [1]   [2]  [3]  [4]
+	if_->R.rdi = argc;
+	if_->R.rsi = (uint64_t) argv[0];
+	if_->R.rdx = (uint64_t) argv[1];
+	if_->R.rcx = (uint64_t) argv[2];
+	if_->R.r8  = (uint64_t) argv[3];
+	if_->R.r9  = (uint64_t) argv[4];
+
+	// printf("rdi: %ld, 0x%p\n", if_->R.rdi, if_->R.rdi);
+	// printf("rsi: %s, 0x%p\n", (char *) if_->R.rsi, if_->R.rsi);
+	// printf("rdx: %s, 0x%p\n", (char *) if_->R.rdx, if_->R.rdx);
 
 	success = true;
 
