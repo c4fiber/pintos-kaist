@@ -40,6 +40,10 @@ process_init (void) {
  * Notice that THIS SHOULD BE CALLED ONCE. */
 tid_t
 process_create_initd (const char *file_name) {
+	// get substring stop at first space
+	char sub_file_name[15];
+	strlcpy(sub_file_name, file_name, strcspn(file_name, " ") + 1);
+
 	char *fn_copy;
 	tid_t tid;
 
@@ -51,7 +55,7 @@ process_create_initd (const char *file_name) {
 	strlcpy (fn_copy, file_name, PGSIZE);
 
 	/* Create a new thread to execute FILE_NAME. */
-	tid = thread_create (file_name, PRI_DEFAULT, initd, fn_copy);
+	tid = thread_create (sub_file_name, PRI_DEFAULT, initd, fn_copy);
 	if (tid == TID_ERROR)
 		palloc_free_page (fn_copy);
 	return tid;
@@ -350,6 +354,8 @@ load (const char *file_name, struct intr_frame *if_) {
 		argv[argc++] = token;
 		token = strtok_r(NULL, " ", &save_ptr);
 	}
+	ASSERT (argc > 0);
+	ASSERT (argv[argc] == NULL);
 
 	/* Allocate and activate page directory. */
 	t->pml4 = pml4_create ();
@@ -436,29 +442,26 @@ load (const char *file_name, struct intr_frame *if_) {
 	/* Start address. */
 	if_->rip = ehdr.e_entry;
 
-	/* TODO: Your code goes here.
-	 * TODO: Implement argument passing (see project2/argument_passing.html). */
-
 	// stack 공간확보 -> rsp를 아래로 이동 (uint64_t 이므로 -1당 1씩 빠진다)
-	if_->rsp = (uintptr_t)((uint64_t) if_->rsp - ROUND_UP(len_include_args, 8)); // 공간 확보
+	if_->rsp = (uintptr_t)((uint64_t) if_->rsp - ROUND_UP(len_include_args, 8));
 
 	/* Put argv[i][...] into stack */
 	uint64_t write_point = if_->rsp;
 	for (int i = 0; i < argc; i++) {
-		uint64_t len = strlen(argv[i]) + 1;
-		memcpy((void *) write_point, (void *) argv[i], len);
+		uint64_t argv_len = strlen(argv[i]) + 1;
+		memcpy((void *) write_point, (void *) argv[i], argv_len);
 		argv[i] = write_point; // stack에서의 argv[i]가 저장된 주소를 argv[i]에 저장
 
 		// printf("argv[%d] place in 0x%p\n", i, argv[i]);
-		write_point += len; // 다음 복사위치로 이동
+		write_point += argv_len; // 다음 복사위치로 이동
 	}
-	
+
 	/* Put argv[i] into stack */
 	// 현재 argv[i] 에는 stack에서의 인자가 저장된 주소를 가지고 있다. ex) %rsp + 11
 	for (int i = argc; i >= 0; i--) {
 		if_->rsp -= sizeof(uint64_t);
 		memcpy((void *) if_->rsp, (void *) &argv[i], sizeof(uint64_t));
-		// printf("put 0x%p into rsp: 0x%p\n", argv[i], (char *) if_->rsp);
+		// printf("rsp: %p, ptr: %p, value: %p, string: %s\n", if_->rsp, &argv[i], argv[i], argv[i]);
 	}
 
 	/* Put return address (0) */
@@ -466,18 +469,9 @@ load (const char *file_name, struct intr_frame *if_) {
 	memset((void *) if_->rsp, 0, sizeof(uint64_t));
 
 	/* Put argc, argv into register */
-	// %rdi       %rsi, %rdx, %rcx, %r8, %r9
-	// argc, argv  [0]   [1]   [2]  [3]  [4]
+	// %rdi: argc   %rsi: &argv[0]
 	if_->R.rdi = argc;
-	if_->R.rsi = (uint64_t) argv[0];
-	if_->R.rdx = (uint64_t) argv[1];
-	if_->R.rcx = (uint64_t) argv[2];
-	if_->R.r8  = (uint64_t) argv[3];
-	if_->R.r9  = (uint64_t) argv[4];
-
-	// printf("rdi: %ld, 0x%p\n", if_->R.rdi, if_->R.rdi);
-	// printf("rsi: %s, 0x%p\n", (char *) if_->R.rsi, if_->R.rsi);
-	// printf("rdx: %s, 0x%p\n", (char *) if_->R.rdx, if_->R.rdx);
+	if_->R.rsi = (uint64_t) (if_->rsp + sizeof(uint64_t));
 
 	success = true;
 
