@@ -107,10 +107,10 @@ void sema_up(struct semaphore *sema) {
 
     old_level = intr_disable();
     if (!list_empty(&sema->waiters)) {
-        struct list_elem *max_prio_elem = list_max(&sema->waiters, prio_asc, 0);
+        list_sort(&sema->waiters, prio_asc, 0);
         yield_for_next =
-            list_entry(max_prio_elem, struct thread, elem)
-                        ->priority > thread_current()->priority
+            list_entry(list_back(&sema->waiters), struct thread, elem)
+                        ->priority > thread_get_priority()
                 ? true
                 : false;
         thread_unblock(
@@ -230,10 +230,11 @@ static struct thread *find_donor(struct lock *lock) {
 }
 
 /* lock holder에게 priority donation 수행 */
-static void priority_donate(struct lock *lock, struct thread* donee) {
+static void priority_donate(struct lock *lock, struct thread *donee) {
     struct thread *holder = get_holder(lock);
     struct thread *donor_thread = find_donor(lock);
-    // printf("priority donation by %s to %s\n", thread_current()->name, holder->name);
+    // printf("priority donation by %s to %s\n", thread_current()->name,
+    // holder->name);
 
     ASSERT(holder != NULL);
 

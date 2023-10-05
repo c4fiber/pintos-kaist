@@ -242,22 +242,22 @@ void thread_sleep(const int64_t wake_up_ticks) {
 
 /* wake up threads if time is over */
 void thread_wake_up(const int64_t ticks_now) {
-	struct list_elem *ptr;
-	struct thread *temp;
+    struct list_elem *ptr;
+    struct thread *temp;
 
-	ASSERT (intr_get_level() == INTR_OFF);
+    ASSERT(intr_get_level() == INTR_OFF);
 
-	while (!list_empty(&sleep_list)) {
-		ptr = list_front(&sleep_list);
-		temp = list_entry(ptr, struct thread, elem);
+    while (!list_empty(&sleep_list)) {
+        ptr = list_front(&sleep_list);
+        temp = list_entry(ptr, struct thread, elem);
 
-		if (temp->wake_up_ticks <= ticks_now) {
-			list_remove(ptr); // pop from blocked list
-			thread_unblock(temp);
-		} else {
-			break; // no more available threads
-		}
-	}
+        if (temp->wake_up_ticks <= ticks_now) {
+            list_remove(ptr); // pop from blocked list
+            thread_unblock(temp);
+        } else {
+            break; // no more available threads
+        }
+    }
 }
 
 /* Puts the current thread to sleep.  It will not be scheduled
@@ -374,9 +374,7 @@ void thread_set_priority(int new_priority) {
 /* Returns the current thread's priority. */
 int thread_get_priority(void) { return thread_current()->priority; }
 
-int get_target_priority(struct thread *target) {
-    return target->priority;
-}
+int get_target_priority(struct thread *target) { return target->priority; }
 
 /* Sets the current thread's nice value to NICE. */
 void thread_set_nice(int nice UNUSED) {
