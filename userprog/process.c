@@ -481,6 +481,8 @@ load (const char *file_name, struct intr_frame *if_) {
 	if_->R.rdi = argc;
 	if_->R.rsi = (uint64_t) (if_->rsp + sizeof(uint64_t));
 
+	// hex_dump(if_->rsp, if_->rsp, USER_STACK - if_->rsp, true);
+
 	success = true;
 
 done:
