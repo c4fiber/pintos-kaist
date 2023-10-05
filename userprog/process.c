@@ -175,14 +175,28 @@ process_exec (void *f_name) {
 
 	/* We first kill the current context */
 	process_cleanup ();
+	
+	//project 2. argument passing
+	int argc = 0;
+	char *argv[128];
+	char *ret_ptr, *next_ptr;
+
+	//parsing argument before load
+	ret_ptr = strtok_r(file_name, " ", &next_ptr);
+	while (ret_ptr) {
+		argv[argc++] = ret_ptr;
+		ret_ptr = strtok_r(NULL, " ", &next_ptr);
+	}
+
 
 	/* And then load the binary */
 	success = load (file_name, &_if);
 
 	/* If load failed, quit. */
 	palloc_free_page (file_name);
-	if (!success)
+	if (!success) {
 		return -1;
+	}
 
 	/* Start switched process. */
 	do_iret (&_if);
@@ -335,37 +349,6 @@ load (const char *file_name, struct intr_frame *if_) {
 		goto done;
 	process_activate (thread_current ());
 
-	//argument passing
-	char *argv[128];
-	memset(argv, 0, sizeof(argv));
-	char *save_ptr;
-	//strtok_r() 함수를 이용하여 공백으로 구분된 문자열을 공백을 기준으로 token으로 나눔.
-	char *token = strtok_r((char *)file_name, " ", &save_ptr); 
-	uint64_t argc = 1;
-	char program_name = NULL;
-
-	if (token != NULL) {
-		//file_name의 첫번째 단어는 program_name
-		program_name = token;
-
-		//인자의 갯수를 알기 위해서 반복문을 돌려 token이 NULL이 될 때 까지 token의 개수를 센다.
-		while (token != NULL) {
-			token = strtok_r(NULL, " ", &save_ptr);
-			argc++;
-		}
-
-		ASSERT (argv != NULL);
-		//argv 배열에 인자를 넣기 위해 다시 한 번 나누기
-		token = strtok_r((char *)file_name, " ", &save_ptr);
-
-		for (int i = 0; i < argc; i++) {
-			argv[i] = token;
-			token = strtok_r(NULL, " ", &save_ptr);
-		}
-
-		/* Set the last element of argv to NULL. */
-    	argv[argc] = NULL;
-	}
 
 	/* Open executable file. */
 	file = filesys_open (program_name);
@@ -493,7 +476,7 @@ static bool
 validate_segment (const struct Phdr *phdr, struct file *file) {
 	/* p_offset and p_vaddr must have the same page offset. */
 	if ((phdr->p_offset & PGMASK) != (phdr->p_vaddr & PGMASK))
-		return false; N
+		return false;
 	if (phdr->p_memsz < phdr->p_filesz)
 		return false;
 
