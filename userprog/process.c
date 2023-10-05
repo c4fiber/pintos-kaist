@@ -461,6 +461,14 @@ load (const char *file_name, struct intr_frame *if_) {
 	for (int i = argc; i >= 0; i--) {
 		if_->rsp -= sizeof(uint64_t);
 		memcpy((void *) if_->rsp, (void *) &argv[i], sizeof(uint64_t));
+
+		// char *temp = argv[i];
+		// __asm __volatile(
+        //     /* Fetch input once */
+        //     "movq %0, %%rax\n"
+        //     "movq %1, %%rcx\n"
+        //     "movq %%rcx, (%%rax)\n"
+        //     : : "g"(if_->rsp), "g"(temp) : "memory");
 		// printf("rsp: %p, ptr: %p, value: %p, string: %s\n", if_->rsp, &argv[i], argv[i], argv[i]);
 	}
 
