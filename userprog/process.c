@@ -165,6 +165,13 @@ process_exec (void *f_name) {
 	char *file_name = f_name;
 	bool success;
 
+	//project 2. argument passing
+	//original file_name copy
+	char file_name_copy[128];
+	//+1은 \n이 들어갈 자리
+	memcpy(file_name_copy, file_name, strlen(file_name) + 1);
+	//project 2. argument passing 
+
 	/* We cannot use the intr_frame in the thread structure.
 	 * This is because when current thread rescheduled,
 	 * it stores the execution information to the member. */
@@ -177,26 +184,23 @@ process_exec (void *f_name) {
 	process_cleanup ();
 	
 	//project 2. argument passing
-	int argc = 0;
-	char *argv[128];
-	char *ret_ptr, *next_ptr;
-
-	//parsing argument before load
-	ret_ptr = strtok_r(file_name, " ", &next_ptr);
-	while (ret_ptr) {
-		argv[argc++] = ret_ptr;
-		ret_ptr = strtok_r(NULL, " ", &next_ptr);
-	}
-
+	memset(&_if, 0, sizeof _if);
+	//project 2. argument passing
 
 	/* And then load the binary */
-	success = load (file_name, &_if);
-
-	/* If load failed, quit. */
-	palloc_free_page (file_name);
+	success = load (file_name_copy, &_if);
+	
+	//if load failed, quit
 	if (!success) {
 		return -1;
 	}
+
+	//project 2. argument passing
+	// /* If load failed, quit. */
+	// palloc_free_page (file_name);
+	hex_dump(_if.rsp, _if.rsp, KERN_BASE - _if.rsp, true);
+
+	//project 2. argument passing
 
 	/* Start switched process. */
 	do_iret (&_if);
@@ -218,6 +222,9 @@ process_wait (tid_t child_tid UNUSED) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
+	/* --- Project 2: Command_line_parsing ---*/
+	while (1){}
+	/* --- Project 2: Command_line_parsing ---*/
 	return -1;
 }
 
@@ -343,6 +350,22 @@ load (const char *file_name, struct intr_frame *if_) {
 	bool success = false;
 	int i;
 
+	//project 2. argument passing
+	char *arg[128];
+	char *token, *save_ptr;
+	int argc = 0;
+
+	token = strtok_r(file_name, " ", &save_ptr); //첫번째 인자 = 프로그램 이름
+	arg[argc] = token; //arg[0] = 프로그램 이름
+
+	while (token != NULL) {
+		token = strtok_r (NULL, " ", &save_ptr);
+		argc ++;
+		arg[argc] = token;
+	}
+	//project 2. argument passing
+
+
 	/* Allocate and activate page directory. */
 	t->pml4 = pml4_create ();
 	if (t->pml4 == NULL)
@@ -351,9 +374,13 @@ load (const char *file_name, struct intr_frame *if_) {
 
 
 	/* Open executable file. */
-	file = filesys_open (program_name);
+	// file = filesys_open (file_name);
+	//project 2. argument passing
+	//arg[0] = 프로그램 이름
+	file = filesys_open (arg[0]);
+	//project 2. argument passing
 	if (file == NULL) {
-		printf ("load: %s: open failed\n", program_name);
+		printf ("load: %s: open failed\n", file_name);
 		goto done;
 	}
 
@@ -431,36 +458,12 @@ load (const char *file_name, struct intr_frame *if_) {
 
 	/* TODO: Your code goes here.
 	 * TODO: Implement argument passing (see project2/argument_passing.html). */
-	 //USER_STACK = 0x47480000
-
-	uint64_t *esp = if_->rsp = USER_STACK;
-	for (int i = argc - 1; i >= 0; i--) {
-		esp -= (strlen(argv[i]) + 1);
-		strlcpy((char *)esp, argv[i], strlen(argv[i]) + 1);
-		argv[i] = (char *)esp;
-	}
-
-	char *null_ptr = NULL;
-	esp -= sizeof(char *); //NULL pointer
-	*((char **)esp) = null_ptr;
-
-	for (int i = argc - 1; i >= 0; i--) {
-		esp -= sizeof(char *);
-		*((int *)esp) = argv[i];
-	}
-
-	char **argv_ptr = (char **) esp;
-	esp -= sizeof(char **);
-	*((char ***)esp) = argv_ptr;
-
-	esp -= sizeof(int);
-	*((int *)esp) = argc;
-
-	esp -= sizeof(void *);
-	*((void **)esp) = 0x0;
-
-	if_ -> rsp = esp; 
-
+	
+	//project 2. argument passing
+	//USER_STACK = 0x47480000
+	argument_stack(arg, argc, if_);
+	printf("argc: %d\n", argc);
+	//project 2. argument passing
 	success = true;
 
 done:
@@ -469,6 +472,50 @@ done:
 	return success;
 }
 
+
+//project 2. argument passing
+void argument_stack(char **argv, int argc, struct intr_frame *if_) {
+	char *arg_address[128];
+
+	//스택에 argv의 요소들을 거꾸로 삽입하기
+	for (int i = argc-1; i >= 0; i--) {
+		int argv_len = strlen(argv[i]);
+		//if_ -> rsp: 현재 user stack에 현재 위치를 가리키는 스택 포인터
+		//각 인자에서 인자 크기를 읽고(+sentinel), 그 크기만큼 rsp가 내려감
+		if_ -> rsp = if_ -> rsp - (argv_len + 1);
+		//그 다음 빈 공간에 argv[i]를 copy
+		memcpy(if_ -> rsp, argv[i], argv_len+1);
+		//arg_address 배열에 현재 문자열 시작 위치 주소를 저장함
+		arg_address[i] = if_ -> rsp;
+	}
+
+	//word-align: 8의 배수 맞추기 padding
+	while (if_ -> rsp % 8 != 0) {
+		//stack pointer의 주소값을 1 내리고
+		if_ -> rsp--; 
+		//데이터에 0을 삽입 => 8바이트씩 저장하기
+		*(uint8_t *) if_ -> rsp = 0;
+	}
+
+	//주소값 삽입(null pointer 포함)
+	for (int i = argc; i >= 0; i--) {
+		//8바이트 만큼 내리기
+		if_ -> rsp = if_ -> rsp - 8;
+		if (i == argc) {
+			memset(if_ -> rsp, 0, sizeof(char **));
+		} else {
+			memcpy(if_ -> rsp, &arg_address[i], sizeof(char **));
+		}
+	}
+
+	if_ -> rsp = if_ -> rsp - 8;
+	memset(if_ -> rsp, 0, sizeof(void *));
+
+	if_ -> R.rdi = argc;
+	if_ -> R.rsi = if_ -> rsp + 8;
+	
+}
+//project 2. argument passing
 
 /* Checks whether PHDR describes a valid, loadable segment in
  * FILE and returns true if so, false otherwise. */
