@@ -28,6 +28,9 @@ typedef int tid_t;
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
 
+/* file table manage */
+#define FDTABLE_SIZE 64
+
 /* A kernel thread or user process.
  *
  * Each thread structure is stored in its own 4 kB page.  The
@@ -98,6 +101,9 @@ struct thread {
 	struct list donor_list;
 	struct list_elem donor;
 	struct lock *requesting_lock;
+
+	/* file */
+	int fd_table[FDTABLE_SIZE];
 
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
