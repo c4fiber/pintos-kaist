@@ -198,7 +198,7 @@ process_exec (void *f_name) {
 	//project 2. argument passing
 	// /* If load failed, quit. */
 	// palloc_free_page (file_name);
-	hex_dump(_if.rsp, _if.rsp, KERN_BASE - _if.rsp, true);
+	hex_dump(_if.rsp, _if.rsp, USER_STACK - _if.rsp, true);
 
 	//project 2. argument passing
 
@@ -480,6 +480,8 @@ void argument_stack(char **argv, int argc, struct intr_frame *if_) {
 	//스택에 argv의 요소들을 거꾸로 삽입하기
 	for (int i = argc-1; i >= 0; i--) {
 		int argv_len = strlen(argv[i]);
+
+		printf("argv: %s\n", argv[i]);
 		//if_ -> rsp: 현재 user stack에 현재 위치를 가리키는 스택 포인터
 		//각 인자에서 인자 크기를 읽고(+sentinel), 그 크기만큼 rsp가 내려감
 		if_ -> rsp = if_ -> rsp - (argv_len + 1);
