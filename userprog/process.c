@@ -117,7 +117,7 @@ static void __do_fork(void *aux) {
     struct thread *parent = (struct thread *)aux;
     struct thread *current = thread_current();
     /* TODO: somehow pass the parent_if. (i.e. process_fork()'s if_) */
-    struct intr_frame *parent_if;
+    struct intr_frame *parent_if = &parent->tf;
     bool succ = true;
 
     /* 1. Read the cpu context to local stack. */
@@ -424,8 +424,15 @@ static bool load(const char *file_name, struct intr_frame *if_) {
     /* Start address. */
     if_->rip = ehdr.e_entry;
 
+    // except return address, rsp shoud multiple of 16 (by x86-64 stack alignment)
+    uint64_t size_of_args = ROUND_UP(len_include_args, 8);
+    if ((8 * (argc + 1) + size_of_args) % 16 != 0) {
+        size_of_args += 8UL;
+    }
+
     // stack 공간확보 -> rsp를 아래로 이동 (uint64_t 이므로 -1당 1씩 빠진다)
-    if_->rsp = (uintptr_t)((uint64_t)if_->rsp - ROUND_UP(len_include_args, 8));
+    if_->rsp = (uintptr_t)((uint64_t)if_->rsp - size_of_args);
+
 
     /* Put argv[i][...] into stack */
     uint64_t write_point = if_->rsp;
