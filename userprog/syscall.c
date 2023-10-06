@@ -24,6 +24,40 @@ void syscall_handler (struct intr_frame *);
 #define MSR_LSTAR 0xc0000082        /* Long mode SYSCALL target */
 #define MSR_SYSCALL_MASK 0xc0000084 /* Mask for the eflags */
 
+//project 2. user memory
+void check_address (const uint64_t *addr){
+	struct thread *cur = thread_current ();
+		if (addr == NULL || !(is_user_vaddr(addr)) || pml4_get_page(cur -> pml4, addr) == NULL) {
+			exit (-1);
+		}
+};
+
+void exit(int status) {
+	struct thread *cur = thread_current();
+    cur->exit_status = status;		// 프로그램이 정상적으로 종료되었는지 확인(정상적 종료 시 0)
+
+	printf("%s: exit(%d)\n", cur -> name, status); 	// 종료 시 Process Termination Message 출력
+	thread_exit();		// 스레드 종료
+}
+
+int exec (char *file_name) {
+	check_address(file_name);
+
+	int file_size = strlen(file_name) + 1;
+	char *fn_copy = palloc_get_page(PAL_ZERO);
+	if (fn_copy == NULL) {
+		exit (-1);
+	}
+	strcpy(fn_copy, file_name, file_size);
+	if (process_exec(fn_copy) == -1) {
+		return -1;
+	}
+
+	NOT_REACHED();
+	return 0;
+}
+//project 2. user memory
+
 void
 syscall_init (void) {
 	write_msr(MSR_STAR, ((uint64_t)SEL_UCSEG - 0x10) << 48  |
@@ -74,16 +108,18 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		break;
 	case SYS_EXIT:
 		// print exit message thread_name: exit(status_code)
-		// TODO 수정 필요함
-		printf("%s: exit(%d)\n", thread_current()->name, argv[0]);
-		thread_exit();
-		f->R.rax = argv[0];
+		exit(argv[0]);
 		break;
 	case SYS_FORK:
 		// TODO f->R.rax = fork(argv[0]);
+		__pid_t child = process_fork(argv[0]);
+		f->R.rax = child;
 		break;
 	case SYS_EXEC:
 		// TODO 
+		if (exec(argv[0]) == -1) {
+			exit (-1);
+		}
 		// thread_create(argv[0], PRI_DEFAULT, argv[0], 0);
 		break;
 	case SYS_WAIT:
@@ -120,4 +156,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
 	}
 	// printf ("system call!\n");
 	// thread_exit ();
+	
+
+	//project 2. user memory
 }

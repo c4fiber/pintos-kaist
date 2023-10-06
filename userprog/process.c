@@ -196,7 +196,7 @@ process_exec (void *f_name) {
 	success = load (file_name_copy, &_if);
 
 	/* load failed */
-	ASSERT (success);
+	// ASSERT (success);
 	
 	//if load failed, quit
 	palloc_free_page (file_name);
@@ -205,7 +205,6 @@ process_exec (void *f_name) {
 	}
 
 	//project 2. argument passing
-	// /* If load failed, quit. */
 	
 	// hex_dump(_if.rsp, _if.rsp, USER_STACK - _if.rsp, true);
 
@@ -247,6 +246,13 @@ process_exit (void) {
 	 * TODO: Implement process termination message (see
 	 * TODO: project2/process_termination.html).
 	 * TODO: We recommend you to implement process resource cleanup here. */
+
+	/* Project 2. system call */ 
+	//process name과 exit code를 print
+	
+	// printf ("%s: exit(%d)\n", curr -> name, curr -> status);
+
+	/* Project 2. system call */ 
 
 	process_cleanup ();
 }
