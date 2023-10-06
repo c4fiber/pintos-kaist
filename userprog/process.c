@@ -40,6 +40,11 @@ process_init (void) {
  * Notice that THIS SHOULD BE CALLED ONCE. */
 tid_t
 process_create_initd (const char *file_name) {
+
+	// get substring stop at first space
+	char sub_file_name[15];
+	strlcpy(sub_file_name, file_name, strcspn(file_name, " ") + 1);
+
 	char *fn_copy;
 	tid_t tid;
 
@@ -184,21 +189,25 @@ process_exec (void *f_name) {
 	process_cleanup ();
 	
 	//project 2. argument passing
-	memset(&_if, 0, sizeof _if);
+	// memset(&_if, 0, sizeof _if);
 	//project 2. argument passing
 
 	/* And then load the binary */
 	success = load (file_name_copy, &_if);
+
+	/* load failed */
+	ASSERT (success);
 	
 	//if load failed, quit
+	palloc_free_page (file_name);
 	if (!success) {
 		return -1;
 	}
 
 	//project 2. argument passing
 	// /* If load failed, quit. */
-	// palloc_free_page (file_name);
-	hex_dump(_if.rsp, _if.rsp, USER_STACK - _if.rsp, true);
+	
+	// hex_dump(_if.rsp, _if.rsp, USER_STACK - _if.rsp, true);
 
 	//project 2. argument passing
 
@@ -223,7 +232,9 @@ process_wait (tid_t child_tid UNUSED) {
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
 	/* --- Project 2: Command_line_parsing ---*/
-	while (1){}
+	while (1){
+		
+	}
 	/* --- Project 2: Command_line_parsing ---*/
 	return -1;
 }
@@ -351,18 +362,20 @@ load (const char *file_name, struct intr_frame *if_) {
 	int i;
 
 	//project 2. argument passing
-	char *arg[128];
-	char *token, *save_ptr;
-	int argc = 0;
-
-	token = strtok_r(file_name, " ", &save_ptr); //첫번째 인자 = 프로그램 이름
-	arg[argc] = token; //arg[0] = 프로그램 이름
+	uint64_t len_include_args = strlen(file_name) + 1;
+	char *argv[128];
+	memset(argv, 0, sizeof(argv));
+	char *save_ptr = NULL;
+	//첫번째 인자 = 프로그램 이름	
+	char *token = strtok_r(file_name, " ", &save_ptr);
+	uint64_t argc = 0;
 
 	while (token != NULL) {
+		argv[argc++] = token;
 		token = strtok_r (NULL, " ", &save_ptr);
-		argc ++;
-		arg[argc] = token;
 	}
+	ASSERT (argc > 0);
+	ASSERT (argv[argc] == NULL);
 	//project 2. argument passing
 
 
@@ -374,11 +387,7 @@ load (const char *file_name, struct intr_frame *if_) {
 
 
 	/* Open executable file. */
-	// file = filesys_open (file_name);
-	//project 2. argument passing
-	//arg[0] = 프로그램 이름
-	file = filesys_open (arg[0]);
-	//project 2. argument passing
+	file = filesys_open (file_name);
 	if (file == NULL) {
 		printf ("load: %s: open failed\n", file_name);
 		goto done;
@@ -461,8 +470,46 @@ load (const char *file_name, struct intr_frame *if_) {
 	
 	//project 2. argument passing
 	//USER_STACK = 0x47480000
-	argument_stack(arg, argc, if_);
-	printf("argc: %d\n", argc);
+	// stack 공간확보 -> rsp를 아래로 이동 (uint64_t 이므로 -1당 1씩 빠진다)
+	if_->rsp = (uintptr_t)((uint64_t) if_->rsp - ROUND_UP(len_include_args, 8));
+
+	/* Put argv[i][...] into stack */
+	uint64_t write_point = if_->rsp;
+	for (int i = 0; i < argc; i++) {
+		uint64_t argv_len = strlen(argv[i]) + 1;
+		memcpy((void *) write_point, (void *) argv[i], argv_len);
+		argv[i] = write_point; // stack에서의 argv[i]가 저장된 주소를 argv[i]에 저장
+
+		// printf("argv[%d] place in 0x%p\n", i, argv[i]);
+		write_point += argv_len; // 다음 복사위치로 이동
+	}
+
+	/* Put argv[i] into stack */
+	// 현재 argv[i] 에는 stack에서의 인자가 저장된 주소를 가지고 있다. ex) %rsp + 11
+	for (int i = argc; i >= 0; i--) {
+		if_->rsp -= sizeof(uint64_t);
+		memcpy((void *) if_->rsp, (void *) &argv[i], sizeof(uint64_t));
+
+		// char *temp = argv[i];
+		// __asm __volatile(
+        //     /* Fetch input once */
+        //     "movq %0, %%rax\n"
+        //     "movq %1, %%rcx\n"
+        //     "movq %%rcx, (%%rax)\n"
+        //     : : "g"(if_->rsp), "g"(temp) : "memory");
+		// printf("rsp: %p, ptr: %p, value: %p, string: %s\n", if_->rsp, &argv[i], argv[i], argv[i]);
+	}
+
+	/* Put return address (0) */
+	if_->rsp -= sizeof(uint64_t);
+	memset((void *) if_->rsp, 0, sizeof(uint64_t));
+
+	/* Put argc, argv into register */
+	// %rdi: argc   %rsi: &argv[0]
+	if_->R.rdi = argc;
+	if_->R.rsi = (uint64_t) (if_->rsp + sizeof(uint64_t));
+
+	// hex_dump(if_->rsp, if_->rsp, USER_STACK - if_->rsp, true);
 	//project 2. argument passing
 	success = true;
 
@@ -471,53 +518,6 @@ done:
 	file_close (file);
 	return success;
 }
-
-
-//project 2. argument passing
-void argument_stack(char **argv, int argc, struct intr_frame *if_) {
-	char *arg_address[128];
-
-	//스택에 argv의 요소들을 거꾸로 삽입하기
-	for (int i = argc-1; i >= 0; i--) {
-		int argv_len = strlen(argv[i]);
-
-		printf("argv: %s\n", argv[i]);
-		//if_ -> rsp: 현재 user stack에 현재 위치를 가리키는 스택 포인터
-		//각 인자에서 인자 크기를 읽고(+sentinel), 그 크기만큼 rsp가 내려감
-		if_ -> rsp = if_ -> rsp - (argv_len + 1);
-		//그 다음 빈 공간에 argv[i]를 copy
-		memcpy(if_ -> rsp, argv[i], argv_len+1);
-		//arg_address 배열에 현재 문자열 시작 위치 주소를 저장함
-		arg_address[i] = if_ -> rsp;
-	}
-
-	//word-align: 8의 배수 맞추기 padding
-	while (if_ -> rsp % 8 != 0) {
-		//stack pointer의 주소값을 1 내리고
-		if_ -> rsp--; 
-		//데이터에 0을 삽입 => 8바이트씩 저장하기
-		*(uint8_t *) if_ -> rsp = 0;
-	}
-
-	//주소값 삽입(null pointer 포함)
-	for (int i = argc; i >= 0; i--) {
-		//8바이트 만큼 내리기
-		if_ -> rsp = if_ -> rsp - 8;
-		if (i == argc) {
-			memset(if_ -> rsp, 0, sizeof(char **));
-		} else {
-			memcpy(if_ -> rsp, &arg_address[i], sizeof(char **));
-		}
-	}
-
-	if_ -> rsp = if_ -> rsp - 8;
-	memset(if_ -> rsp, 0, sizeof(void *));
-
-	if_ -> R.rdi = argc;
-	if_ -> R.rsi = if_ -> rsp + 8;
-	
-}
-//project 2. argument passing
 
 /* Checks whether PHDR describes a valid, loadable segment in
  * FILE and returns true if so, false otherwise. */
