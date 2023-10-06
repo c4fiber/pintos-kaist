@@ -28,7 +28,7 @@ typedef int tid_t;
 #define PRI_MAX 63     /* Highest priority. */
 
 /* file table manage */
-#define FDTABLE_SIZE 64
+#define FDTABLE_SIZE (1 << 15)
 
 /* A kernel thread or user process.
  *
@@ -102,7 +102,8 @@ struct thread {
     struct lock *requesting_lock;
 
     /* file */
-    int fd_table[FDTABLE_SIZE];
+    uint16_t fd_count;
+    void **fd_table;
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem; /* List element. */
