@@ -5,6 +5,7 @@
         "boundary.h": "c",
         "main.h": "c",
         "stdbool.h": "c",
-        "palloc.h": "c"
+        "palloc.h": "c",
+        "file.h": "c"
     }
 }

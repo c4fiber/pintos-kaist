@@ -5,6 +5,12 @@
 #include <list.h>
 #include <stdint.h>
 #include "threads/interrupt.h"
+
+//project 2. system call
+#define FDT_PAGES 3		/* pages to allocate for file descriptor tables(thread_create, process_exit) */
+#define FDCOUNT_LIMIT FDT_PAGES *(1<<9)		/* LIMIT of FD index*/
+//project 2. system call
+
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -104,6 +110,12 @@ struct thread {
 
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
+
+	//project 2. system call
+	/* fd table*/
+	struct file **fd_table; 		    /* thread_create 에서 할당됨 */
+	int fd_idx; 						/* idx of open spot of fd table  */
+	//project 2. system call
 
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */

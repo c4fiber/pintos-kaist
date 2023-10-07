@@ -72,7 +72,7 @@ bool create (char *file, unsigned initial_size) {
 
 bool remove (char *file) {
 	check_address(file);
-	//위와 비슷
+	//filesys/filesys.c의 filesys_remove() 함수: file 의 name으로 file을 지우는 함수, 성공하면 true, 실패하면 false
 	if(filesys_remove(file)) {
 		return true;
 	} else {
@@ -80,17 +80,71 @@ bool remove (char *file) {
 	}
 }
 
-int open (char *file) {
-	//미완성: fd에 대하여 구현해야 함
-	check_address(file);
-	if(filesys_open(file)) {
-		//STDIN_FILENO 이면 0
-		return 0;
-		//STDOUT_FILENO 이면 1
-		//return 1??
-	} else {
+int add_file_to_fdt(struct file *file) {
+	struct thread *cur = thread_current ();
+	struct file **fdt = cur -> fd_table;
+
+	//fd의 위치가 제한 범위를 넘지 않고, fd table의 인덱스 위치와 일치한다면
+	while (cur -> fd_idx < FDCOUNT_LIMIT && fdt[cur -> fd_idx]) {
+		cur -> fd_idx ++;
+	}
+
+	//fdt가 가득 찼다면
+	if (cur -> fd_idx >= FDCOUNT_LIMIT) {
 		return -1;
 	}
+
+	fdt[cur ->fd_idx] = file;
+	return cur -> fd_idx;
+}
+
+int open (char *file) {
+	check_address(file);
+	struct file *open_file = filesys_open(file);
+
+	if(open_file == NULL) {
+		return -1;
+	}
+
+	int fd = add_file_to_fdt(open_file);
+
+	//fd table이 가득 찼다면
+	if(fd == -1) {
+		file_close(open_file);
+	}
+
+	return fd;
+}
+
+static struct file *find_file_by_fd (int fd) {
+	struct thread *cur = thread_current ();
+
+	if (fd < 0 || fd >= FDCOUNT_LIMIT) {
+			return NULL;
+		}
+		return cur -> fd_table[fd]
+}
+
+int filesize(int fd) {
+	struct file *open_file = find_file_by_fd(fd);
+	if (open_file == NULL) {
+		return -1;
+	}
+	return file_length(open_file);
+	
+}
+
+void seek (int fd, unsigned position) {
+	struct file *seek_file = find_file_by_fd(fd);
+	//fd table 의 0, 1, 2는 이미 정의되어 있다.
+	//0 = STDIN - keyboard file object
+	//1 = STDOUT - monitor file object
+	//2 = STDERR - monitor file object
+	if (seek_file <= 2) {
+		return;
+	}
+
+	seek_file->pos = position;
 }
 //project 2. user memory
 
@@ -170,7 +224,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		f->R.rax = open(argv[0]);
 		break;
 	case SYS_FILESIZE:
-		//f->R.rax = filesize(argv[0]);
+		f->R.rax = filesize(argv[0]);
 		break;
 	case SYS_READ:
 		//f->R.rax = read(argv[0], argv[1], argv[2]);
@@ -180,7 +234,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		putbuf(f->R.rsi, f->R.rdx);
 		break;
 	case SYS_SEEK:
-		//seek(argv[0], argv[1]);
+		seek(argv[0], argv[1]);
 		break;
 	case SYS_TELL:
 		//f->R.rax = tell(argv[0]);
