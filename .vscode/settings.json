@@ -4,6 +4,7 @@
         "lib.h": "c",
         "boundary.h": "c",
         "main.h": "c",
-        "stdbool.h": "c"
+        "stdbool.h": "c",
+        "palloc.h": "c"
     }
 }

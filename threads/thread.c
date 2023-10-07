@@ -460,6 +460,7 @@ static void init_thread(struct thread *t, const char *name, int priority) {
     t->priority = priority;
     t->magic = THREAD_MAGIC;
     t->original_priority = priority;
+    t->exit_status = 0;
     list_init(&t->donor_list);
 }
 

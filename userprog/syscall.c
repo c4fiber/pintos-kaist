@@ -34,19 +34,22 @@ void check_address (const uint64_t *addr){
 
 void exit(int status) {
 	struct thread *cur = thread_current();
-    cur->exit_status = status;		// 프로그램이 정상적으로 종료되었는지 확인(정상적 종료 시 0)
-
-	printf("%s: exit(%d)\n", cur -> name, status); 	// 종료 시 Process Termination Message 출력
-	thread_exit();		// 스레드 종료
+	// 프로그램이 정상적으로 종료되었는지 확인(정상적 종료 시 0)
+    cur->exit_status = status;		
+	// 종료 시 Process Termination Message 출력
+	printf("%s: exit(%d)\n", cur -> name, status); 	
+	// 스레드 종료
+	thread_exit();		
 }
 
 int exec (char *file_name) {
 	check_address(file_name);
 
 	int file_size = strlen(file_name) + 1;
+	//PAL_ZERO: palloc.h의 열거형 palloc_flags 의 값 중 하나. 002 means Zero page contents.
 	char *fn_copy = palloc_get_page(PAL_ZERO);
 	if (fn_copy == NULL) {
-		exit (-1);
+		exit (-1); 
 	}
 	strcpy(fn_copy, file_name, file_size);
 	if (process_exec(fn_copy) == -1) {
@@ -55,6 +58,39 @@ int exec (char *file_name) {
 
 	NOT_REACHED();
 	return 0;
+}
+
+bool create (char *file, unsigned initial_size) {
+	check_address(file);
+	//filesys/filesys.c의 filesys_create() 함수: name과 initial size로 file을 만드는 함수, 성공 여부를 true/false로 리턴함
+	if (filesys_create(file, initial_size)) {
+		return true;
+	} else {
+		return false;
+	}
+}
+
+bool remove (char *file) {
+	check_address(file);
+	//위와 비슷
+	if(filesys_remove(file)) {
+		return true;
+	} else {
+		return false;
+	}
+}
+
+int open (char *file) {
+	//미완성: fd에 대하여 구현해야 함
+	check_address(file);
+	if(filesys_open(file)) {
+		//STDIN_FILENO 이면 0
+		return 0;
+		//STDOUT_FILENO 이면 1
+		//return 1??
+	} else {
+		return -1;
+	}
 }
 //project 2. user memory
 
@@ -120,19 +156,18 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		if (exec(argv[0]) == -1) {
 			exit (-1);
 		}
-		// thread_create(argv[0], PRI_DEFAULT, argv[0], 0);
 		break;
 	case SYS_WAIT:
 		//f->R.rax = wait(argv[0]);
 		break;
 	case SYS_CREATE:
-		//f->R.rax = create(argv[0], argv[1]);
+		f->R.rax = create(argv[0], argv[1]);
 		break;
 	case SYS_REMOVE:
-		//f->R.rax = remove(argv[0]);
+		f->R.rax = remove(argv[0]);
 		break;
 	case SYS_OPEN:
-		//f->R.rax = open(argv[0]);
+		f->R.rax = open(argv[0]);
 		break;
 	case SYS_FILESIZE:
 		//f->R.rax = filesize(argv[0]);

@@ -89,6 +89,9 @@ struct thread {
 	/* Owned by thread.c. */
 	tid_t tid;                          /* Thread identifier. */
 	enum thread_status status;          /* Thread state. */
+	//project 2. user memory
+	enum thread_status exit_status;
+	//project 2. user memory
 	char name[16];                      /* Name (for debugging purposes). */
 	int priority;                       /* Priority. */
 	int64_t wake_up_ticks;
@@ -105,9 +108,7 @@ struct thread {
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
 	uint64_t *pml4;                     /* Page map level 4 */
-	//project 2. user memory
-	enum thread_status exit_status;
-	//project 2. user memory
+	
 #endif
 #ifdef VM
 	/* Table for whole virtual memory owned by thread. */
