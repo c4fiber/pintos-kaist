@@ -34,6 +34,11 @@ typedef int tid_t;
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
 
+//project 2. system call
+/* file descriptor table manage*/
+#define FDTABLE_SIZE (1 << 15)
+//project 2. system call
+
 /* A kernel thread or user process.
  *
  * Each thread structure is stored in its own 4 kB page.  The
