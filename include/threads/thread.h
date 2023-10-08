@@ -102,8 +102,8 @@ struct thread {
     struct lock *requesting_lock;
 
     /* file */
-    uint16_t fd_count;
-    void **fd_table;
+    uint16_t fd_count; // 현재 보유한 fd의 개수
+    void **fd_table; // fd에 해당하는 file 포인터를 저장하는 테이블
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem; /* List element. */
@@ -166,5 +166,6 @@ void thread_wake_up(const int64_t);
 #endif
 
 bool prio_asc(struct list_elem *, struct list_elem *, void *);
+struct file *thread_get_file(int fd);
 
 #endif /* threads/thread.h */
