@@ -8,6 +8,7 @@
 #include "threads/interrupt.h"
 #include "threads/mmu.h"
 #include "threads/palloc.h"
+#include "threads/synch.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "userprog/gdt.h"
@@ -21,6 +22,12 @@
 #ifdef VM
 #include "vm/vm.h"
 #endif
+
+struct fork_base {
+    struct intr_frame if_;
+    struct semaphore sema;
+    struct thread *parent;
+};
 
 static void process_cleanup(void);
 static bool load(const char *file_name, struct intr_frame *if_);
@@ -72,9 +79,22 @@ static void initd(void *f_name) {
 
 /* Clones the current process as `name`. Returns the new process's thread id, or
  * TID_ERROR if the thread cannot be created. */
-tid_t process_fork(const char *name, struct intr_frame *if_ UNUSED) {
+tid_t process_fork(const char *name, struct intr_frame *if_) {
     /* Clone current thread to new thread.*/
-    return thread_create(name, PRI_DEFAULT, __do_fork, thread_current());
+    // TODO can I use malloc instead palloc?
+    struct fork_base *hand_in = palloc_get_page(PAL_USER);
+
+    hand_in->parent = thread_current();
+    memcpy(&hand_in->if_, if_, sizeof(struct intr_frame));
+    sema_init(&hand_in->sema, 0);
+
+    /* Clone current thread to new thread.*/
+    int res = thread_create(name, PRI_DEFAULT, __do_fork, hand_in);
+
+    sema_down(&hand_in->sema);
+    palloc_free_page(hand_in);
+
+    return res;
 }
 
 #ifndef VM
@@ -88,22 +108,35 @@ static bool duplicate_pte(uint64_t *pte, void *va, void *aux) {
     bool writable;
 
     /* 1. TODO: If the parent_page is kernel page, then return immediately. */
+    // kernel 영역을 만나면 바로 종료한다.
+    if (is_kernel_vaddr(va))
+        return true;
 
     /* 2. Resolve VA from the parent's page map level 4. */
     parent_page = pml4_get_page(parent->pml4, va);
 
     /* 3. TODO: Allocate new PAL_USER page for the child and set result to
      *    TODO: NEWPAGE. */
+    newpage = palloc_get_page(PAL_USER);
+    if (newpage == NULL) {
+        return false;
+    }
 
     /* 4. TODO: Duplicate parent's page to the new page and
      *    TODO: check whether parent's page is writable or not (set WRITABLE
      *    TODO: according to the result). */
+    memcpy(newpage, parent_page, PGSIZE);
+    writable =  is_writable(pte);
 
     /* 5. Add new page to child's page table at address VA with WRITABLE
      *    permission. */
     if (!pml4_set_page(current->pml4, va, newpage, writable)) {
         /* 6. TODO: if fail to insert page, do error handling. */
+        // msg("duplicate_pte failed");
+        palloc_free_page(newpage);
+        thread_exit();
     }
+    // msg("duplicate_pte success");
     return true;
 }
 #endif
@@ -113,11 +146,12 @@ static bool duplicate_pte(uint64_t *pte, void *va, void *aux) {
  *       That is, you are required to pass second argument of process_fork to
  *       this function. */
 static void __do_fork(void *aux) {
+    struct fork_base *fork_base = (struct fork_base *)aux;
     struct intr_frame if_;
-    struct thread *parent = (struct thread *)aux;
+    struct thread *parent = fork_base->parent;
     struct thread *current = thread_current();
     /* TODO: somehow pass the parent_if. (i.e. process_fork()'s if_) */
-    struct intr_frame *parent_if = &parent->tf;
+    struct intr_frame *parent_if = &fork_base->if_;
     bool succ = true;
 
     /* 1. Read the cpu context to local stack. */
@@ -134,8 +168,9 @@ static void __do_fork(void *aux) {
     if (!supplemental_page_table_copy(&current->spt, &parent->spt))
         goto error;
 #else
-    if (!pml4_for_each(parent->pml4, duplicate_pte, parent))
+    if (!pml4_for_each(parent->pml4, duplicate_pte, parent)) {
         goto error;
+    }
 #endif
 
     /* TODO: Your code goes here.
@@ -144,12 +179,32 @@ static void __do_fork(void *aux) {
      * TODO:       from the fork() until this function successfully duplicates
      * TODO:       the resources of parent.*/
 
+    /* 3. Duplicate fd table  (let i could bigger than FDTABLE_SIZE) */
+    for (uint32_t i = 3; i < parent->fd_count; i++) {
+        void *file_dup = file_duplicate(thread_get_file(i));
+        *(current->fd_table + i) = file_dup;
+        current->fd_count += 1;
+    }
+
+    // msg("child hex dump");
+    // hex_dump(if_.rsp, if_.rsp, USER_STACK - if_.rsp, true);
+
+    /* 4. edit return value to 0 for child process. */
+    if_.R.rax = 0x0;
+
+    // why? (assert: running thread == current thread)
     process_init();
 
+    // parent process can run now
+    sema_up(&fork_base->sema);
+
     /* Finally, switch to the newly created process. */
-    if (succ)
+    if (succ) {
         do_iret(&if_);
+    }
 error:
+    msg("fork failed");
+    sema_up(&fork_base->sema);
     thread_exit();
 }
 
@@ -170,14 +225,8 @@ int process_exec(void *f_name) {
     /* We first kill the current context */
     process_cleanup();
 
-    // before parsing
-    // printf("file_name: %s\n", file_name);
-
     /* And then load the binary */
     success = load(file_name, &_if);
-
-    // after parsing
-    // printf("file_name: %s\n", file_name);
 
     /* load failed */
     ASSERT(success);
@@ -205,8 +254,15 @@ int process_wait(tid_t child_tid UNUSED) {
     /* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
      * XXX:       to add infinite loop here before
      * XXX:       implementing the process_wait. */
-    thread_sleep(100);
-    return -1;
+    struct thread *curr = thread_current(); 
+
+
+    if(strcmp(curr->name,"main")==0){
+        thread_sleep(200);
+
+    }else
+        thread_sleep(100);
+    return child_tid;
 }
 
 /* Exit the process. This function is called by thread_exit (). */
@@ -216,7 +272,7 @@ void process_exit(void) {
      * TODO: Implement process termination message (see
      * TODO: project2/process_termination.html).
      * TODO: We recommend you to implement process resource cleanup here. */
-
+    // msg("process_exit");
     process_cleanup();
 }
 
@@ -424,15 +480,16 @@ static bool load(const char *file_name, struct intr_frame *if_) {
     /* Start address. */
     if_->rip = ehdr.e_entry;
 
-    // except return address, rsp shoud multiple of 16 (by x86-64 stack alignment)
+    // except return address, rsp shoud multiple of 16 (by x86-64 stack
+    // alignment)
     uint64_t size_of_args = ROUND_UP(len_include_args, 8);
     if ((8 * (argc + 1) + size_of_args) % 16 != 0) {
         size_of_args += 8UL;
     }
+    ASSERT((8 * (argc + 1) + size_of_args) % 16 == 0)
 
     // stack 공간확보 -> rsp를 아래로 이동 (uint64_t 이므로 -1당 1씩 빠진다)
     if_->rsp = (uintptr_t)((uint64_t)if_->rsp - size_of_args);
-
 
     /* Put argv[i][...] into stack */
     uint64_t write_point = if_->rsp;
