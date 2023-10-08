@@ -205,9 +205,9 @@ tid_t thread_create(const char *name, int priority, thread_func *function,
     //project 2. system call
     /* allocate fd_table */
     //fd_table을 기록하기 위한 페이지를 할당
-    t -> fd_table = palloc_get_page(PAL_ZERO);
+    t -> fdt = palloc_get_page(PAL_ZERO);
     //fd_table이 없는 경우 할당한 페이지를 반환
-    if (t -> fd_table == NULL) {
+    if (t -> fdt == NULL) {
         palloc_free_page(t);
         return TID_ERROR;
     }
@@ -477,8 +477,8 @@ static void init_thread(struct thread *t, const char *name, int priority) {
 
     //project 2. system call
     /* file descriptor */
-    t -> fd_idx = 3;
-    t -> fd_table = NULL;
+    t -> next_fd = 3;
+    t -> fdt = NULL;
     //project 2. system call
 }
 
@@ -606,7 +606,7 @@ static void do_schedule(int status) {
     while (!list_empty(&destruction_req)) {
         struct thread *victim =
             list_entry(list_pop_front(&destruction_req), struct thread, elem);
-        palloc_free_page(victim -> fd_table);
+        palloc_free_page(victim -> fdt);
         palloc_free_page(victim);
     }
     thread_current()->status = status;

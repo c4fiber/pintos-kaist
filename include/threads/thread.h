@@ -6,10 +6,6 @@
 #include <stdint.h>
 #include "threads/interrupt.h"
 
-//project 2. system call
-#define FDT_PAGES 3		/* pages to allocate for file descriptor tables(thread_create, process_exit) */
-#define FDCOUNT_LIMIT FDT_PAGES *(1<<9)		/* LIMIT of FD index*/
-//project 2. system call
 
 #ifdef VM
 #include "vm/vm.h"
@@ -35,8 +31,8 @@ typedef int tid_t;
 #define PRI_MAX 63                      /* Highest priority. */
 
 //project 2. system call
-/* file descriptor table manage*/
-#define FDTABLE_SIZE (1 << 15)
+#define FDT_PAGES 2		/* pages to allocate for file descriptor tables(thread_create, process_exit) */
+#define FDT_COUNT_LIMIT 128		/* LIMIT of FD index*/
 //project 2. system call
 
 /* A kernel thread or user process.
@@ -118,8 +114,18 @@ struct thread {
 
 	//project 2. system call
 	/* fd table*/
-	struct file **fd_table; 		    /* thread_create 에서 할당됨 */
-	int fd_idx; 						/* idx of open spot of fd table  */
+	struct file **fdt; 		    /* thread_create 에서 할당됨 */
+	int next_fd;
+	
+	struct intr_frame parent_if;
+	struct list child_list;
+	struct list_elem child_elem;
+
+	struct semaphore load_sema; // 현재 스레드가 load되는 동안 부모가 기다리게 하기 위한 semaphore
+	struct semaphore exit_sema;
+	struct semaphore wait_sema;
+
+	struct file *running; // 현재 실행중인 파일 						/* idx of open spot of fd table  */
 	//project 2. system call
 
 #ifdef USERPROG

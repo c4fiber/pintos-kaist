@@ -44,7 +44,8 @@ process_create_initd (const char *file_name) {
 	// get substring stop at first space
 	char sub_file_name[15];
 	strlcpy(sub_file_name, file_name, strcspn(file_name, " ") + 1);
-
+	
+	// project 2 : system call
 	char *fn_copy;
 	tid_t tid;
 
@@ -55,7 +56,16 @@ process_create_initd (const char *file_name) {
 		return TID_ERROR;
 	strlcpy (fn_copy, file_name, PGSIZE);
 
+	
+    // file_name을 분리해서 넣어줘야함
+    char *save_ptr;
+    strtok_r(file_name, " ", &save_ptr);
+	// project 2 : system call
+    
 	/* Create a new thread to execute FILE_NAME. */
+	// PRI_DEFAULT : 기본 우선순위 31
+    // file_name을 이름으로 하고 PRI_DEFAULT를 우선순위로 갖는 새로운 thread 생성, tid에 저장
+    // thread는 fn_copy를 인자로 받는 initd라는 함수를 실행시킴
 	tid = thread_create (file_name, PRI_DEFAULT, initd, fn_copy);
 	if (tid == TID_ERROR)
 		palloc_free_page (fn_copy);
@@ -80,9 +90,40 @@ initd (void *f_name) {
  * TID_ERROR if the thread cannot be created. */
 tid_t
 process_fork (const char *name, struct intr_frame *if_ UNUSED) {
+
+	//project 2. system call
 	/* Clone current thread to new thread.*/
-	return thread_create (name,
-			PRI_DEFAULT, __do_fork, thread_current ());
+	// 현재 스레드의 parent_if에 복제해야 하는 if를 복사한다.
+	struct thread *cur = thread_current();
+	memcpy(&cur->parent_if, if_, sizeof(struct intr_frame));
+
+	// 현재 스레드를 fork한 new 스레드를 생성한다.
+	tid_t pid = thread_create(name, PRI_DEFAULT, __do_fork, cur);
+	if (pid == TID_ERROR)
+		return TID_ERROR;
+	
+	// 자식이 로드될 때까지 대기하기 위해서 방금 생성한 자식 스레드를 찾는다.
+	struct thread *child = get_child_process(pid);
+
+	// 현재 스레드는 생성만 완료된 상태이다. 생성되어서 ready_list에 들어가고 실행될 때 __do_fork 함수가 실행된다.
+	// __do_fork 함수가 실행되어 로드가 완료될 때까지 부모는 대기한다.
+	sema_down(&child->load_sema);
+
+	// 자식이 로드되다가 오류로 exit한 경우
+	if (child->exit_status == TID_ERROR)
+	{
+		// 자식이 종료되었으므로 자식 리스트에서 제거한다.
+		// 이거 넣으면 간헐적으로 실패함 (syn-read)
+		// list_remove(&child->child_elem);
+		// 자식이 완전히 종료되고 스케줄링이 이어질 수 있도록 자식에게 signal을 보낸다.
+		// sema_up(&child->exit_sema);
+		// 자식 프로세스의 pid가 아닌 TID_ERROR를 반환한다.
+		return TID_ERROR;
+	}
+
+	// 자식 프로세스의 pid를 반환한다.
+	return pid;
+	//project 2. system call
 }
 
 #ifndef VM
@@ -132,6 +173,9 @@ __do_fork (void *aux) {
 
 	/* 1. Read the cpu context to local stack. */
 	memcpy (&if_, parent_if, sizeof (struct intr_frame));
+	//project 2. system call
+	if_.R.rax = 0; // 자식 프로세스의 리턴값은 0
+	//project 2. system call
 
 	/* 2. Duplicate PT */
 	current->pml4 = pml4_create();
@@ -154,14 +198,33 @@ __do_fork (void *aux) {
 	 * TODO:       from the fork() until this function successfully duplicates
 	 * TODO:       the resources of parent.*/
 
-	process_init ();
+	//project 2. system call
+	// FDT 복사
+	for (int i = 0; i < FDT_COUNT_LIMIT; i++)
+	{
+		struct file *file = parent->fdt[i];
+		if (file == NULL)
+			continue;
+		if (file > 2)
+			file = file_duplicate(file);
+		current->fdt[i] = file;
+	}
+	current->next_fd = parent->next_fd;
+
+	// 로드가 완료될 때까지 기다리고 있던 부모 대기 해제
+	sema_up(&current->load_sema);
+	process_init();
 
 	/* Finally, switch to the newly created process. */
 	if (succ)
-		do_iret (&if_);
+		do_iret(&if_);
 error:
-	thread_exit ();
+	sema_up(&current->load_sema);
+	exit(TID_ERROR);
+	//project 2. system call
 }
+
+
 
 /* Switch the current execution context to the f_name.
  * Returns -1 on fail. */
@@ -169,13 +232,6 @@ int
 process_exec (void *f_name) {
 	char *file_name = f_name;
 	bool success;
-
-	//project 2. argument passing
-	//original file_name copy
-	char file_name_copy[128];
-	//+1은 \n이 들어갈 자리
-	memcpy(file_name_copy, file_name, strlen(file_name) + 1);
-	//project 2. argument passing 
 
 	/* We cannot use the intr_frame in the thread structure.
 	 * This is because when current thread rescheduled,
@@ -189,30 +245,79 @@ process_exec (void *f_name) {
 	process_cleanup ();
 	
 	//project 2. argument passing
-	// memset(&_if, 0, sizeof _if);
-	//project 2. argument passing
+	char *parse[64];
+	char *token, *save_ptr;
+	int count = 0;
+	for (token = strtok_r(file_name, " ", &save_ptr); token != NULL; token = strtok_r(NULL, " ", &save_ptr))
+		parse[count++] = token;
+	
 
 	/* And then load the binary */
-	success = load (file_name_copy, &_if);
+	lock_acquire(&filesys_lock);
+	success = load(file_name, &_if);
+	lock_release(&filesys_lock);
+	//project 2. argument passing
 
 	/* load failed */
 	// ASSERT (success);
 	
 	//if load failed, quit
-	palloc_free_page (file_name);
 	if (!success) {
+		palloc_free_page (file_name);
 		return -1;
 	}
 
 	//project 2. argument passing
+	argument_stack(parse, count, &_if.rsp); // 함수 내부에서 parse와 rsp의 값을 직접 변경하기 위해 주소 전달
+	_if.R.rdi = count;
+	_if.R.rsi = (char *)_if.rsp + 8;
 	
 	// hex_dump(_if.rsp, _if.rsp, USER_STACK - _if.rsp, true);
 
 	//project 2. argument passing
 
+	palloc_free_page (file_name);
+
 	/* Start switched process. */
 	do_iret (&_if);
 	NOT_REACHED ();
+}
+
+void argument_stack(char **parse, int count, void **rsp) // 주소를 전달받았으므로 이중 포인터 사용
+{
+	// 프로그램 이름, 인자 문자열 push
+	for (int i = count - 1; i > -1; i--)
+	{
+		for (int j = strlen(parse[i]); j > -1; j--)
+		{
+			(*rsp)--;					  // 스택 주소 감소
+			**(char **)rsp = parse[i][j]; // 주소에 문자 저장
+		}
+		parse[i] = *(char **)rsp; // parse[i]에 현재 rsp의 값 저장해둠(지금 저장한 인자가 시작하는 주소값)
+	}
+
+	// 정렬 패딩 push
+	int padding = (int)*rsp % 8;
+	for (int i = 0; i < padding; i++)
+	{
+		(*rsp)--;
+		**(uint8_t **)rsp = 0; // rsp 직전까지 값 채움
+	}
+
+	// 인자 문자열 종료를 나타내는 0 push
+	(*rsp) -= 8;
+	**(char ***)rsp = 0;
+
+	// 각 인자 문자열의 주소 push
+	for (int i = count - 1; i > -1; i--)
+	{
+		(*rsp) -= 8; // 다음 주소로 이동
+		**(char ***)rsp = parse[i];
+	}
+
+	// return address push
+	(*rsp) -= 8;
+	**(void ***)rsp = 0;
 }
 
 
@@ -230,27 +335,48 @@ process_wait (tid_t child_tid UNUSED) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
-	/* --- Project 2: Command_line_parsing ---*/
-	while (1){
-		
-	}
-	/* --- Project 2: Command_line_parsing ---*/
-	return -1;
+	/* Project 2: system call */
+	struct thread *child = get_child_process(child_tid);
+	if (child == NULL) // 자식이 아니면 -1을 반환한다.
+		return -1;
+
+	// 자식이 종료될 때까지 대기한다. (process_exit에서 자식이 종료될 때 sema_up 해줄 것이다.)
+	sema_down(&child->wait_sema);
+	// 자식이 종료됨을 알리는 `wait_sema` signal을 받으면 현재 스레드(부모)의 자식 리스트에서 제거한다.
+	list_remove(&child->child_elem);
+	// 자식이 완전히 종료되고 스케줄링이 이어질 수 있도록 자식에게 signal을 보낸다.
+	sema_up(&child->exit_sema);
+
+	return child->exit_status; // 자식의 exit_status를 반환한다.
+	/* Project 2: system call */
 }
 
 /* Exit the process. This function is called by thread_exit (). */
 void
 process_exit (void) {
-	struct thread *curr = thread_current ();
+	struct thread *cur = thread_current ();
 	/* TODO: Your code goes here.
 	 * TODO: Implement process termination message (see
 	 * TODO: project2/process_termination.html).
 	 * TODO: We recommend you to implement process resource cleanup here. */
 
 	/* Project 2. system call */ 
-	//process name과 exit code를 print
-	
-	// printf ("%s: exit(%d)\n", curr -> name, curr -> status);
+	// FDT의 모든 파일을 닫고 메모리를 반환한다.
+	for (int i = 2; i < FDT_COUNT_LIMIT; i++)
+	{
+		if (cur->fdt[i] != NULL)
+			close(i);
+	}
+	palloc_free_multiple(cur->fdt, FDT_PAGES);
+	file_close(cur->running); // 현재 실행 중인 파일도 닫는다.
+
+	process_cleanup();
+	hash_destroy(&cur->spt.spt_hash, NULL); // todo 🚨
+
+	// 자식이 종료될 때까지 대기하고 있는 부모에게 signal을 보낸다.
+	sema_up(&cur->wait_sema);
+	// 부모의 signal을 기다린다. 대기가 풀리고 나서 do_schedule(THREAD_DYING)이 이어져 다른 스레드가 실행된다.
+	sema_down(&cur->exit_sema);
 
 	/* Project 2. system call */ 
 
@@ -367,24 +493,6 @@ load (const char *file_name, struct intr_frame *if_) {
 	bool success = false;
 	int i;
 
-	//project 2. argument passing
-	uint64_t len_include_args = strlen(file_name) + 1;
-	char *argv[128];
-	memset(argv, 0, sizeof(argv));
-	char *save_ptr = NULL;
-	//첫번째 인자 = 프로그램 이름	
-	char *token = strtok_r(file_name, " ", &save_ptr);
-	uint64_t argc = 0;
-
-	while (token != NULL) {
-		argv[argc++] = token;
-		token = strtok_r (NULL, " ", &save_ptr);
-	}
-	ASSERT (argc > 0);
-	ASSERT (argv[argc] == NULL);
-	//project 2. argument passing
-
-
 	/* Allocate and activate page directory. */
 	t->pml4 = pml4_create ();
 	if (t->pml4 == NULL)
@@ -407,7 +515,7 @@ load (const char *file_name, struct intr_frame *if_) {
 			|| ehdr.e_version != 1
 			|| ehdr.e_phentsize != sizeof (struct Phdr)
 			|| ehdr.e_phnum > 1024) {
-		printf ("load: %s: error loading executable\n", file_name);
+		printf ("load: %s: error loading executable\n", program_name);
 		goto done;
 	}
 
@@ -464,6 +572,11 @@ load (const char *file_name, struct intr_frame *if_) {
 		}
 	}
 
+	// 스레드가 삭제될 때 파일을 닫을 수 있게 구조체에 파일을 저장해둔다.
+	t->running = file;
+	// 현재 실행중인 파일은 수정할 수 없게 막는다.
+	file_deny_write(file);
+
 	/* Set up stack. */
 	if (!setup_stack (if_))
 		goto done;
@@ -474,54 +587,12 @@ load (const char *file_name, struct intr_frame *if_) {
 	/* TODO: Your code goes here.
 	 * TODO: Implement argument passing (see project2/argument_passing.html). */
 	
-	//project 2. argument passing
-	//USER_STACK = 0x47480000
-	// stack 공간확보 -> rsp를 아래로 이동 (uint64_t 이므로 -1당 1씩 빠진다)
-	if_->rsp = (uintptr_t)((uint64_t) if_->rsp - ROUND_UP(len_include_args, 8));
-
-	/* Put argv[i][...] into stack */
-	uint64_t write_point = if_->rsp;
-	for (int i = 0; i < argc; i++) {
-		uint64_t argv_len = strlen(argv[i]) + 1;
-		memcpy((void *) write_point, (void *) argv[i], argv_len);
-		argv[i] = write_point; // stack에서의 argv[i]가 저장된 주소를 argv[i]에 저장
-
-		// printf("argv[%d] place in 0x%p\n", i, argv[i]);
-		write_point += argv_len; // 다음 복사위치로 이동
-	}
-
-	/* Put argv[i] into stack */
-	// 현재 argv[i] 에는 stack에서의 인자가 저장된 주소를 가지고 있다. ex) %rsp + 11
-	for (int i = argc; i >= 0; i--) {
-		if_->rsp -= sizeof(uint64_t);
-		memcpy((void *) if_->rsp, (void *) &argv[i], sizeof(uint64_t));
-
-		// char *temp = argv[i];
-		// __asm __volatile(
-        //     /* Fetch input once */
-        //     "movq %0, %%rax\n"
-        //     "movq %1, %%rcx\n"
-        //     "movq %%rcx, (%%rax)\n"
-        //     : : "g"(if_->rsp), "g"(temp) : "memory");
-		// printf("rsp: %p, ptr: %p, value: %p, string: %s\n", if_->rsp, &argv[i], argv[i], argv[i]);
-	}
-
-	/* Put return address (0) */
-	if_->rsp -= sizeof(uint64_t);
-	memset((void *) if_->rsp, 0, sizeof(uint64_t));
-
-	/* Put argc, argv into register */
-	// %rdi: argc   %rsi: &argv[0]
-	if_->R.rdi = argc;
-	if_->R.rsi = (uint64_t) (if_->rsp + sizeof(uint64_t));
-
-	// hex_dump(if_->rsp, if_->rsp, USER_STACK - if_->rsp, true);
-	//project 2. argument passing
 	success = true;
 
 done:
 	/* We arrive here whether the load is successful or not. */
-	file_close (file);
+	// 파일을 여기서 닫지 않고 스레드가 삭제될 때 process_exit에서 닫는다.
+	// file_close (file);
 	return success;
 }
 
