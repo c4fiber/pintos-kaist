@@ -24,7 +24,7 @@
 #endif
 
 struct fork_base {
-    struct intr_frame if_;
+    struct intr_frame *if_;
     struct semaphore sema;
     struct thread *parent;
 };
@@ -81,18 +81,15 @@ static void initd(void *f_name) {
  * TID_ERROR if the thread cannot be created. */
 tid_t process_fork(const char *name, struct intr_frame *if_) {
     /* Clone current thread to new thread.*/
-    // TODO can I use malloc instead palloc?
-    struct fork_base *hand_in = palloc_get_page(PAL_USER);
-
-    hand_in->parent = thread_current();
-    memcpy(&hand_in->if_, if_, sizeof(struct intr_frame));
-    sema_init(&hand_in->sema, 0);
+    struct fork_base fork_base;
+    fork_base.if_ = if_;
+    fork_base.parent = thread_current();
+    sema_init(&fork_base.sema, 0);
 
     /* Clone current thread to new thread.*/
-    int res = thread_create(name, PRI_DEFAULT, __do_fork, hand_in);
+    int res = thread_create(name, PRI_DEFAULT, __do_fork, &fork_base);
 
-    sema_down(&hand_in->sema);
-    palloc_free_page(hand_in);
+    sema_down(&fork_base.sema);
 
     return res;
 }
@@ -146,12 +143,12 @@ static bool duplicate_pte(uint64_t *pte, void *va, void *aux) {
  *       That is, you are required to pass second argument of process_fork to
  *       this function. */
 static void __do_fork(void *aux) {
-    struct fork_base *fork_base = (struct fork_base *)aux;
-    struct intr_frame if_;
-    struct thread *parent = fork_base->parent;
     struct thread *current = thread_current();
-    /* TODO: somehow pass the parent_if. (i.e. process_fork()'s if_) */
-    struct intr_frame *parent_if = &fork_base->if_;
+    struct intr_frame if_;
+    
+    struct fork_base *fork_base = (struct fork_base *)aux;
+    struct thread *parent = fork_base->parent;
+    struct intr_frame *parent_if = fork_base->if_;
     bool succ = true;
 
     /* 1. Read the cpu context to local stack. */
