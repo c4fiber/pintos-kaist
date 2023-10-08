@@ -2,6 +2,7 @@
 #define THREADS_THREAD_H
 
 #include "threads/interrupt.h"
+#include "threads/synch.h"
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
@@ -104,6 +105,12 @@ struct thread {
     /* file */
     uint16_t fd_count; // 현재 보유한 fd의 개수
     void **fd_table; // fd에 해당하는 file 포인터를 저장하는 테이블
+
+    /* system call */
+    int exit_status;
+    struct semaphore wait_call_sema;
+    struct list child_list;
+    struct list_elem child_elem;
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem; /* List element. */

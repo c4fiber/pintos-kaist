@@ -13,15 +13,19 @@ typedef int pid_t;
 void syscall_entry(void);
 void syscall_handler(struct intr_frame *);
 
-/* Projects 2 and later. */
+/* process */
 void halt(void) NO_RETURN;
 void exit(int status) NO_RETURN;
 pid_t fork(const char *thread_name, struct intr_frame *);
-int exec(const char *file);
+int exec(const char *file_name);
 int wait(pid_t);
-bool create(const char *file, unsigned initial_size);
-bool remove(const char *file);
-int open(const char *file);
+
+/* file */
+bool create(const char *file_name, unsigned initial_size);
+bool remove(const char *file_name);
+int open(const char *file_name);
+
+/* file descriptor */
 int filesize(int fd);
 int read(int fd, void *buffer, unsigned length);
 int write(int fd, const void *buffer, unsigned length);
@@ -29,7 +33,21 @@ void seek(int fd, unsigned position);
 unsigned tell(int fd);
 void close(int fd);
 
+/* Extra */
 int dup2(int oldfd, int newfd);
+
+static bool is_valid_pointer(const void *ptr) {
+    if (ptr == NULL) {
+        return false;
+    }
+    // if (!is_user_vaddr(ptr)) {
+    //     return 1;
+    // }
+    if (pml4e_walk(thread_current()->pml4, ptr, false) == NULL) {
+        return false;
+    }
+    return true;
+}
 
 /* System call.
  *
@@ -145,8 +163,11 @@ void halt(void) { power_off(); }
 
 /* Exit */
 void exit(int status) {
-    printf("%s: exit(%d)\n", thread_current()->name, status);
+    struct thread *curr = thread_current();
+    curr->exit_status = status;
+    
     thread_exit();
+    // printf("%s: exit(%d)\n", thread_current()->name, curr->exit_status);
 }
 
 /* Fork */
@@ -155,22 +176,37 @@ pid_t fork(const char *thread_name, struct intr_frame *f) {
     return process_fork(thread_name, f);
 }
 
-/* Exec */
-int exec(const char *file) { return process_exec(file); }
-
 /* Wait */
 int wait(pid_t pid) { return process_wait(pid); }
 
+/* Exec */
+int exec(const char *file_name) { return process_exec(file_name); }
+
 /* Create */
-bool create(const char *file, unsigned initial_size) {
-    return filesys_create(file, initial_size);
+bool create(const char *file_name, unsigned initial_size) {
+    if (!is_valid_pointer(file_name)) {
+        exit(-1);
+    }
+
+    return filesys_create(file_name, initial_size);
 }
 
 /* Remove */
-bool remove(const char *file) { return filesys_remove(file); }
+bool remove(const char *file_name) {
+    if (!is_valid_pointer(file_name)) {
+        return false;
+    }
+
+    return filesys_remove(file_name);
+}
 
 /* Open */
 int open(const char *file_name) {
+    if (!is_valid_pointer(file_name)) {
+        false;
+    }
+
+    // if file doesn't exist, return -1
     struct file *file = filesys_open(file_name);
     if (file == NULL) {
         return -1;
@@ -184,7 +220,7 @@ int open(const char *file_name) {
 int filesize(int fd) {
     struct file *file = thread_current()->fd_table[fd - 4]; // except 0,1,2
     if (file == NULL) {
-        return -1;
+        exit(-1);
     }
     return file_length(file);
 }

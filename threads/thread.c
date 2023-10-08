@@ -472,6 +472,11 @@ static void init_thread(struct thread *t, const char *name, int priority) {
     /* file descriptor */
     t->fd_count = 3;
     t->fd_table = NULL;
+
+    /* system call */
+    t->exit_status = 0;
+    sema_init(&t->wait_call_sema, 0);
+    list_init(&t->child_list);
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should

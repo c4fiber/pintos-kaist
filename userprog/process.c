@@ -33,6 +33,7 @@ static void process_cleanup(void);
 static bool load(const char *file_name, struct intr_frame *if_);
 static void initd(void *f_name);
 static void __do_fork(void *);
+static struct thread *get_child_process(int pid);
 
 /* General process initializer for initd and other process. */
 static void process_init(void) { struct thread *current = thread_current(); }
@@ -87,11 +88,18 @@ tid_t process_fork(const char *name, struct intr_frame *if_) {
     sema_init(&fork_base.sema, 0);
 
     /* Clone current thread to new thread.*/
-    int res = thread_create(name, PRI_DEFAULT, __do_fork, &fork_base);
+    int child_tid = thread_create(name, PRI_DEFAULT, __do_fork, &fork_base);
 
+    // put child process to child_list
+    struct thread *child = get_child_process(child_tid);
+    if (child == NULL) {
+        return -1;
+    }
+
+    /* Wait until child process exit */
     sema_down(&fork_base.sema);
 
-    return res;
+    return child_tid;
 }
 
 #ifndef VM
@@ -123,7 +131,7 @@ static bool duplicate_pte(uint64_t *pte, void *va, void *aux) {
      *    TODO: check whether parent's page is writable or not (set WRITABLE
      *    TODO: according to the result). */
     memcpy(newpage, parent_page, PGSIZE);
-    writable =  is_writable(pte);
+    writable = is_writable(pte);
 
     /* 5. Add new page to child's page table at address VA with WRITABLE
      *    permission. */
@@ -145,7 +153,7 @@ static bool duplicate_pte(uint64_t *pte, void *va, void *aux) {
 static void __do_fork(void *aux) {
     struct thread *current = thread_current();
     struct intr_frame if_;
-    
+
     struct fork_base *fork_base = (struct fork_base *)aux;
     struct thread *parent = fork_base->parent;
     struct intr_frame *parent_if = fork_base->if_;
@@ -191,6 +199,9 @@ static void __do_fork(void *aux) {
 
     // why? (assert: running thread == current thread)
     process_init();
+
+    // put child process to child_list
+    list_push_back(&parent->child_list, &current->child_elem);
 
     // parent process can run now
     sema_up(&fork_base->sema);
@@ -251,15 +262,26 @@ int process_wait(tid_t child_tid UNUSED) {
     /* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
      * XXX:       to add infinite loop here before
      * XXX:       implementing the process_wait. */
-    struct thread *curr = thread_current(); 
+    struct thread *curr = thread_current();
 
+    // find child process in child_list
+    struct list_elem *e;
+    struct thread *child = get_child_process(child_tid);
 
-    if(strcmp(curr->name,"main")==0){
-        thread_sleep(200);
+    // if child process not found, return -1
+    if (child == NULL) {
+        return -1;
+    }
 
-    }else
-        thread_sleep(100);
-    return child_tid;
+    // if child process already exit, return child process's exit status
+    if (child->exit_status != -1) {
+        return child->exit_status;
+    }
+
+    // wait until child process exit
+    sema_down(&child->wait_call_sema);
+
+    return child->exit_status;
 }
 
 /* Exit the process. This function is called by thread_exit (). */
@@ -269,7 +291,11 @@ void process_exit(void) {
      * TODO: Implement process termination message (see
      * TODO: project2/process_termination.html).
      * TODO: We recommend you to implement process resource cleanup here. */
-    // msg("process_exit");
+
+    // TODO could be changed to use condition variables
+    curr->wait_call_sema.value = list_size(&curr->wait_call_sema.waiters);
+
+    printf("%s: exit(%d)\n", thread_current()->name, curr->exit_status);
     process_cleanup();
 }
 
@@ -743,3 +769,19 @@ static bool setup_stack(struct intr_frame *if_) {
     return success;
 }
 #endif /* VM */
+
+/* get child process by pid */
+static struct thread *get_child_process(int pid) {
+    struct thread *curr = thread_current();
+    struct list_elem *e;
+    struct thread *t;
+
+    for (e = list_begin(&curr->child_list); e != list_end(&curr->child_list);
+         e = list_next(e)) {
+        t = list_entry(e, struct thread, child_elem);
+        if (t->tid == pid) {
+            return t;
+        }
+    }
+    return NULL;
+}
