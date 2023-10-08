@@ -9,7 +9,6 @@
 #include <syscall-nr.h>
 
 typedef int pid_t;
-#define FDTABLE_SIZE 16
 
 void syscall_entry(void);
 void syscall_handler(struct intr_frame *);
@@ -17,7 +16,7 @@ void syscall_handler(struct intr_frame *);
 /* Projects 2 and later. */
 void halt(void) NO_RETURN;
 void exit(int status) NO_RETURN;
-pid_t fork(const char *thread_name);
+pid_t fork(const char *thread_name, struct intr_frame *);
 int exec(const char *file);
 int wait(pid_t);
 bool create(const char *file, unsigned initial_size);
@@ -98,7 +97,7 @@ void syscall_handler(struct intr_frame *f UNUSED) {
         exit(argv[0]);
         break;
     case SYS_FORK:
-        f->R.rax = fork(argv[0]);
+        f->R.rax = fork(argv[0], f);
         break;
     case SYS_EXEC:
         // TODO Please note that file descriptors remain open across an exec
@@ -151,7 +150,10 @@ void exit(int status) {
 }
 
 /* Fork */
-pid_t fork(const char *thread_name) { return process_fork(thread_name); }
+pid_t fork(const char *thread_name, struct intr_frame *f) {
+    // child process의 반환값(rax)은 이때 반환하는 값이다.
+    return process_fork(thread_name, f);
+}
 
 /* Exec */
 int exec(const char *file) { return process_exec(file); }
@@ -173,11 +175,14 @@ int open(const char *file_name) {
     if (file == NULL) {
         return -1;
     }
+
+    thread_current()->fd_table[thread_current()->fd_count] = file;
+    return thread_current()->fd_count++;
 }
 
 /* Filesize */
 int filesize(int fd) {
-    struct file *file = thread_current()->fd_table[fd];
+    struct file *file = thread_current()->fd_table[fd - 4]; // except 0,1,2
     if (file == NULL) {
         return -1;
     }
@@ -186,6 +191,17 @@ int filesize(int fd) {
 
 /* Read */
 int read(int fd, void *buffer, unsigned length) {
+    // invalid fd
+    if (fd == 1 || fd == 2 || fd < 0 || fd >= FDTABLE_SIZE) {
+        return -1;
+    }
+
+    // current thread does not have fd
+    if (fd >= thread_current()->fd_count) {
+        return -1;
+    }
+
+    void *file = thread_current()->fd_table[fd];
     if (fd == 0) {
         int i;
         for (i = 0; i < length; i++) {
@@ -193,16 +209,29 @@ int read(int fd, void *buffer, unsigned length) {
         }
         return length;
     } else {
+        return file_read(file, buffer, length);
     }
     return -1;
 }
 
 /* Write */
 int write(int fd, const void *buffer, unsigned length) {
+    // invalid fd
+    if (fd == 0 || fd < 0 || fd >= FDTABLE_SIZE) {
+        return -1;
+    }
+
+    // current thread does not have fd
+    if (fd >= thread_current()->fd_count) {
+        return -1;
+    }
+
+    void *file = thread_current()->fd_table[fd];
     if (fd == 1) {
         putbuf(buffer, length);
         return length;
     } else {
+        return file_write(file, buffer, length);
     }
     return -1;
 }
