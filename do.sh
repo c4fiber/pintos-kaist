@@ -1,6 +1,8 @@
 #!/bin/bash
 
+
 cd ~/pintos-kaist
+
 source ./activate
 
 cd userprog
