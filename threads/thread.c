@@ -706,12 +706,3 @@ struct thread *find_thread(tid_t tid) {
     intr_set_level(old_level);
     return NULL;
 }
-
-/* Returns file pointer of index in fd_table */
-struct file *thread_get_file(int fd) {
-    struct thread *curr = thread_current();
-    if (fd < 0 || fd >= curr->fd_count) {
-        return NULL;
-    }
-    return curr->fd_table[fd];
-}

@@ -168,7 +168,7 @@ void check_address(void *addr)
 	if (pml4_get_page(thread_current()->pml4, addr) == NULL)
 		exit(-1);
 }
-//project 2. user memory
+
 /* Halt */
 void halt(void) { power_off(); }
 
