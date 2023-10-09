@@ -223,7 +223,11 @@ int filesize(int fd) {
 
 /* Read file by fd */
 int read(int fd, void *buffer, unsigned length) {
-    if (invalid_fd(fd)) {
+    check_valid_fd(fd);
+    check_address(buffer);
+
+    // current thread does not have fd
+    if (fd >= thread_current()->fd_count) {
         return -1;
     }
 
@@ -236,13 +240,15 @@ int read(int fd, void *buffer, unsigned length) {
                 break;
             }
         }
-        return length;
+        // return length;
+	} else {
+		if (length <= 0) {
+			return -1;
+		}
+        return file_read(file, buffer, length);
     }
-
-    void *file = thread_get_file(fd);
-    if (invalid_address(file) || invalid_address(buffer)) {
-        return -1;
-    }
+    return -1;
+}
 
     // if (pml4e_walk(thread_current()->pml4, file, false) == NULL) {
     //     return -1;
@@ -257,7 +263,11 @@ int read(int fd, void *buffer, unsigned length) {
 
 /* Write file by fd */
 int write(int fd, const void *buffer, unsigned length) {
-    if (invalid_fd(fd)) {
+    check_valid_fd(fd);
+    check_address (buffer);
+
+    // current thread does not have fd
+    if (fd >= thread_current()->fd_count) {
         return -1;
     }
 
