@@ -235,6 +235,7 @@ int filesize(int fd) {
 /* Read */
 int read(int fd, void *buffer, unsigned length) {
     check_valid_fd(fd);
+    check_address(buffer);
 
     // current thread does not have fd
     if (fd >= thread_current()->fd_count) {
@@ -257,9 +258,7 @@ int read(int fd, void *buffer, unsigned length) {
 		if (length <= 0) {
 			return -1;
 		}
-		// lock_acquire(&filesys_lock);	
         return file_read(file, buffer, length);
-		// lock_release(&filesys_lock);
     }
     return -1;
 }
@@ -267,6 +266,7 @@ int read(int fd, void *buffer, unsigned length) {
 /* Write */
 int write(int fd, const void *buffer, unsigned length) {
     check_valid_fd(fd);
+    check_address (buffer);
 
     // current thread does not have fd
     if (fd >= thread_current()->fd_count) {
@@ -309,7 +309,7 @@ void close(int fd) {
     struct file *file = thread_current()->fd_table[fd];
     if (file == NULL) {
         return;
-
+    }
     // file_close(file);
     thread_current()->fd_table[fd] = NULL;
 }

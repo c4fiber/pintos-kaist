@@ -105,7 +105,6 @@ struct thread {
     struct lock *requesting_lock;
 
     /* file */
-    int exit_status;
     uint16_t fd_count; // 현재 보유한 fd의 개수
     void **fd_table; // fd에 해당하는 file 포인터를 저장하는 테이블
 
