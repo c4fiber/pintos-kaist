@@ -470,6 +470,7 @@ static void init_thread(struct thread *t, const char *name, int priority) {
     list_init(&t->donor_list);
 
     /* file descriptor */
+    t->exit_status = 0;
     t->fd_count = 3;
     t->fd_table = NULL;
 }

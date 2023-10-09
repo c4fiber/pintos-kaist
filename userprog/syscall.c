@@ -55,6 +55,11 @@ void syscall_init(void) {
      * mode stack. Therefore, we masked the FLAG_FL. */
     write_msr(MSR_SYSCALL_MASK,
               FLAG_IF | FLAG_TF | FLAG_DF | FLAG_IOPL | FLAG_AC | FLAG_NT);
+
+    extern struct lock filesys_lock;		  
+	//project 2. system call
+	// lock_init(&filesys_lock);
+	//project 2. system call
 }
 
 /* The main system call interface */
@@ -157,7 +162,9 @@ void halt(void) { power_off(); }
 
 /* Exit */
 void exit(int status) {
-    printf("%s: exit(%d)\n", thread_current()->name, status);
+	struct thread *cur = thread_current ();
+	cur -> exit_status = status;
+    printf("%s: exit(%d)\n", cur->name, status);
     thread_exit();
 }
 
@@ -205,7 +212,11 @@ int filesize(int fd) {
 
 /* Read */
 int read(int fd, void *buffer, unsigned length) {
-    // invalid fd
+    //buffer 시작 주소 체크
+	check_address(buffer);
+	//buffer 끝 주소도 유저 영역 내인지 체크
+	check_address(buffer + length - 1);
+	// invalid fd
     if (fd == 1 || fd == 2 || fd < 0 || fd >= FDTABLE_SIZE) {
         return -1;
     }
@@ -216,20 +227,31 @@ int read(int fd, void *buffer, unsigned length) {
     }
 
     void *file = thread_current()->fd_table[fd];
+	//fd == STDIN인지 확인
     if (fd == 0) {
         int i;
         for (i = 0; i < length; i++) {
             ((char *)buffer)[i] = input_getc();
+			//엔터를 눌렀는지 확인
+			if (input_getc() == '\0') {
+				break;
+			}
         }
-        return length;
-    } else {
+        // return length;
+	} else {
+		if (length <= 0) {
+			return -1;
+		}
+		// lock_acquire(&filesys_lock);	
         return file_read(file, buffer, length);
+		// lock_release(&filesys_lock);
     }
     return -1;
 }
 
 /* Write */
 int write(int fd, const void *buffer, unsigned length) {
+	check_address(buffer);
     // invalid fd
     if (fd == 0 || fd < 0 || fd >= FDTABLE_SIZE) {
         return -1;
@@ -271,11 +293,14 @@ unsigned tell(int fd) {
 
 /* close */
 void close(int fd) {
+    if (fd >= thread_current() -> fd_count ) {
+        return;
+    }
     struct file *file = thread_current()->fd_table[fd];
     if (file == NULL) {
         return;
     }
-    file_close(file);
+    // file_close(file);
     thread_current()->fd_table[fd] = NULL;
 }
 
