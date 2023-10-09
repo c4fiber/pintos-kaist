@@ -24,6 +24,8 @@
    Do not modify this value. */
 #define THREAD_BASIC 0xd42df210
 
+static struct list all_list; /* List of all threads. */
+
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
 static struct list ready_list;
@@ -122,6 +124,7 @@ void thread_init(void) {
     list_init(&ready_list);
     list_init(&sleep_list);
     list_init(&destruction_req);
+    list_init(&all_list);
 
     /* Set up a thread structure for the running thread. */
     initial_thread = running_thread();
@@ -208,6 +211,9 @@ tid_t thread_create(const char *name, int priority, thread_func *function,
         palloc_free_page(t);
         return TID_ERROR;
     }
+
+    /* Add to all list */
+    list_push_back(&all_list, &t->all_elem);
 
     /* Call the kernel_thread if it scheduled.
      * Note) rdi is 1st argument, and rsi is 2nd argument. */
@@ -331,6 +337,19 @@ void thread_exit(void) {
 #ifdef USERPROG
     process_exit();
 #endif
+
+    // unblock threads in wait_call_sema waiters order by priority
+    struct list_elem *ptr;
+    struct thread *temp;
+    while (!list_empty(&thread_current()->wait_call_sema.waiters)) {
+        ptr = list_max(&thread_current()->wait_call_sema.waiters, prio_asc, 0);
+        temp = list_entry(ptr, struct thread, elem);
+        list_remove(ptr);
+        thread_unblock(temp);
+    }
+
+    // pop from all list
+    list_remove(&thread_current()->all_elem);
 
     /* Just set our status to dying and schedule another process.
        We will be destroyed during the call to schedule_tail(). */
@@ -472,6 +491,11 @@ static void init_thread(struct thread *t, const char *name, int priority) {
     /* file descriptor */
     t->fd_count = 3;
     t->fd_table = NULL;
+
+    /* system call */
+    t->exit_status = -1;
+    sema_init(&t->wait_call_sema, 0);
+    list_init(&t->child_list);
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
@@ -652,6 +676,35 @@ static tid_t allocate_tid(void) {
     lock_release(&tid_lock);
 
     return tid;
+}
+
+/* Returns file pointer of index in fd_table */
+struct file *thread_get_file(int fd) {
+    struct thread *curr = thread_current();
+    if (fd < 0 || fd >= curr->fd_count) {
+        return NULL;
+    }
+    return curr->fd_table[fd];
+}
+
+// find thread by tid from all list
+struct thread *find_thread(tid_t tid) {
+    struct list_elem *ptr;
+    struct thread *temp;
+    int old_level = intr_disable();
+    
+    ptr = list_begin(&all_list);
+    while (ptr != list_end(&all_list)) {
+        temp = list_entry(ptr, struct thread, all_elem);
+        if (temp->tid == tid) {
+            intr_set_level(old_level);
+            return temp;
+        }
+        ptr = list_next(ptr);
+    }
+
+    intr_set_level(old_level);
+    return NULL;
 }
 
 /* Returns file pointer of index in fd_table */

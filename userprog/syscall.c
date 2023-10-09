@@ -13,16 +13,19 @@ typedef int pid_t;
 void syscall_entry(void);
 void syscall_handler(struct intr_frame *);
 
-/* Projects 2 and later. */
-void check_address(void *addr);
+/* process */
 void halt(void) NO_RETURN;
 void exit(int status) NO_RETURN;
 pid_t fork(const char *thread_name, struct intr_frame *);
-int exec(const char *file);
+int exec(const char *file_name);
 int wait(pid_t);
-bool create(const char *file, unsigned initial_size);
-bool remove(const char *file);
-int open(const char *file);
+
+/* file */
+bool create(const char *file_name, unsigned initial_size);
+bool remove(const char *file_name);
+int open(const char *file_name);
+
+/* file descriptor */
 int filesize(int fd);
 int read(int fd, void *buffer, unsigned length);
 int write(int fd, const void *buffer, unsigned length);
@@ -30,7 +33,21 @@ void seek(int fd, unsigned position);
 unsigned tell(int fd);
 void close(int fd);
 
+/* Extra */
 int dup2(int oldfd, int newfd);
+
+static bool is_valid_pointer(const void *ptr) {
+    if (ptr == NULL) {
+        return false;
+    }
+    // if (!is_user_vaddr(ptr)) {
+    //     return 1;
+    // }
+    if (pml4e_walk(thread_current()->pml4, ptr, false) == NULL) {
+        return false;
+    }
+    return true;
+}
 
 /* System call.
  *
