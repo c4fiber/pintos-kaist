@@ -110,7 +110,7 @@ void sema_up(struct semaphore *sema) {
         list_sort(&sema->waiters, prio_asc, 0);
         yield_for_next =
             list_entry(list_back(&sema->waiters), struct thread, elem)
-                        ->priority > thread_current()->priority
+                        ->priority > thread_get_priority()
                 ? true
                 : false;
         thread_unblock(
@@ -120,7 +120,7 @@ void sema_up(struct semaphore *sema) {
     intr_set_level(old_level);
 
     if (yield_for_next) {
-        if (intr_context ()) {
+        if (intr_context()) {
             intr_yield_on_return();
         } else {
             thread_yield();
@@ -402,6 +402,7 @@ void cond_wait(struct condition *cond, struct lock *lock) {
 
     sema_init(&waiter.semaphore, 0);
     list_insert_ordered(&cond->waiters, &waiter.elem, sema_compare_priority, 0);
+
     lock_release(lock);
     sema_down(&waiter.semaphore);
     lock_acquire(lock);
@@ -424,7 +425,7 @@ void cond_signal(struct condition *cond, struct lock *lock UNUSED) {
         list_sort (&cond -> waiters, sema_compare_priority, 0);
         sema_up(&list_entry(list_pop_front(&cond->waiters), struct semaphore_elem, elem) -> semaphore);
     }
-        
+
 }
 
 /* Wakes up all threads, if any, waiting on COND (protected by

@@ -140,6 +140,7 @@ void syscall_handler(struct intr_frame *f UNUSED) {
     // printf ("system call!\n");
     // thread_exit ();
 }
+
 //project 2. user memory
 void check_address(void *addr)
 {
@@ -151,7 +152,6 @@ void check_address(void *addr)
 		exit(-1);
 }
 //project 2. user memory
-
 /* Halt */
 void halt(void) { power_off(); }
 
@@ -267,6 +267,7 @@ unsigned tell(int fd) {
     }
     return file_tell(file);
 }
+
 
 /* close */
 void close(int fd) {
