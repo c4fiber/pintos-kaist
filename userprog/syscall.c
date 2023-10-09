@@ -13,19 +13,17 @@ typedef int pid_t;
 void syscall_entry(void);
 void syscall_handler(struct intr_frame *);
 
-/* process */
+/* System call handler. */
 void halt(void) NO_RETURN;
 void exit(int status) NO_RETURN;
 pid_t fork(const char *thread_name, struct intr_frame *);
 int exec(const char *file_name);
 int wait(pid_t);
 
-/* file */
 bool create(const char *file_name, unsigned initial_size);
 bool remove(const char *file_name);
 int open(const char *file_name);
 
-/* file descriptor */
 int filesize(int fd);
 int read(int fd, void *buffer, unsigned length);
 int write(int fd, const void *buffer, unsigned length);
@@ -33,21 +31,11 @@ void seek(int fd, unsigned position);
 unsigned tell(int fd);
 void close(int fd);
 
-/* Extra */
 int dup2(int oldfd, int newfd);
 
-static bool is_valid_pointer(const void *ptr) {
-    if (ptr == NULL) {
-        return false;
-    }
-    // if (!is_user_vaddr(ptr)) {
-    //     return 1;
-    // }
-    if (pml4e_walk(thread_current()->pml4, ptr, false) == NULL) {
-        return false;
-    }
-    return true;
-}
+static void check_address(void *addr);
+static void check_valid_fd(int fd);
+static struct lock filesys_lock;
 
 /* System call.
  *
@@ -72,6 +60,9 @@ void syscall_init(void) {
      * mode stack. Therefore, we masked the FLAG_FL. */
     write_msr(MSR_SYSCALL_MASK,
               FLAG_IF | FLAG_TF | FLAG_DF | FLAG_IOPL | FLAG_AC | FLAG_NT);
+
+    // project 2
+    lock_init(&filesys_lock);
 }
 
 /* The main system call interface */
@@ -158,25 +149,10 @@ void syscall_handler(struct intr_frame *f UNUSED) {
     // thread_exit ();
 }
 
-// project 2. user memory
-void check_address(void *addr) {
-    if (addr == NULL)
-        exit(-1);
-    if (!is_user_vaddr(addr))
-        exit(-1);
-    if (pml4_get_page(thread_current()->pml4, addr) == NULL)
-        exit(-1);
-}
-
-void check_valid_fd(int fd) {
-    if (fd < 0 || fd >= FDTABLE_SIZE)
-        exit(-1);
-}
-
-/* Halt */
+/* Halt (power off) */
 void halt(void) { power_off(); }
 
-/* Exit */
+/* Exit with status */
 void exit(int status) {
     printf("%s: exit(%d)\n", thread_current()->name, status);
     thread_current()->exit_status = status;
@@ -189,22 +165,22 @@ pid_t fork(const char *thread_name, struct intr_frame *f) {
     return process_fork(thread_name, f);
 }
 
-/* Exec */
+/* Exec file */
 int exec(const char *file) { return process_exec(file); }
 
-/* Wait */
+/* Wait for pid(child) */
 int wait(pid_t pid) { return process_wait(pid); }
 
-/* Create */
+/* Create new file */
 bool create(const char *file, unsigned initial_size) {
     check_address(file);
     return filesys_create(file, initial_size);
 }
 
-/* Remove */
+/* Remove file */
 bool remove(const char *file) { return filesys_remove(file); }
 
-/* Open */
+/* Open file */
 int open(const char *file_name) {
     check_address(file_name);
     struct file *file = filesys_open(file_name);
@@ -216,40 +192,38 @@ int open(const char *file_name) {
     return thread_current()->fd_count++;
 }
 
-/* Filesize */
+/* Get filesize */
 int filesize(int fd) {
     check_valid_fd(fd);
 
-    struct file *file = thread_current()->fd_table[fd - 4]; // except 0,1,2
+    struct file *file = thread_current()->fd_table[fd]; // except 0,1,2
     if (file == NULL) {
         return -1;
     }
     return file_length(file);
 }
 
-/* Read */
+/* Read file by fd */
 int read(int fd, void *buffer, unsigned length) {
     check_valid_fd(fd);
+    void *file = thread_get_file(fd);
+    check_address(file);
+    check_address(buffer);
 
-    // current thread does not have fd
-    if (fd >= thread_current()->fd_count) {
-        return -1;
-    }
-
-    void *file = thread_current()->fd_table[fd];
     if (fd == 0) {
-        int i;
-        for (i = 0; i < length; i++) {
+        for (int i = 0; i < length; i++) {
             ((char *)buffer)[i] = input_getc();
         }
         return length;
-    } else {
-        return file_read(file, buffer, length);
     }
-    return -1;
+
+    lock_acquire(&filesys_lock);
+    int res = file_read(file, buffer, length);
+    lock_release(&filesys_lock);
+    return res;
 }
 
-/* Write */
+/* Write file by fd */
 int write(int fd, const void *buffer, unsigned length) {
     check_valid_fd(fd);
 
@@ -268,7 +242,7 @@ int write(int fd, const void *buffer, unsigned length) {
     return -1;
 }
 
-/* Seek */
+/* Seek file by fd */
 void seek(int fd, unsigned position) {
     struct file *file = thread_current()->fd_table[fd];
     if (file == NULL) {
@@ -277,7 +251,7 @@ void seek(int fd, unsigned position) {
     file_seek(file, position);
 }
 
-/* tell */
+/* tell file by fd */
 unsigned tell(int fd) {
     struct file *file = thread_current()->fd_table[fd];
     if (file == NULL) {
@@ -286,7 +260,7 @@ unsigned tell(int fd) {
     return file_tell(file);
 }
 
-/* close */
+/* close file by fd */
 void close(int fd) {
     if (fd >= thread_current()->fd_count) {
         return;
@@ -318,4 +292,20 @@ int dup2(int oldfd, int newfd) {
     }
     thread_current()->fd_table[newfd] = thread_current()->fd_table[oldfd];
     return newfd;
+}
+
+// exit(-1) if invalid address
+static void check_address(void *addr) {
+    if (addr == NULL)
+        exit(-1);
+    if (!is_user_vaddr(addr))
+        exit(-1);
+    if (pml4_get_page(thread_current()->pml4, addr) == NULL)
+        exit(-1);
+}
+
+// exit(-1) if invalid fd
+static void check_valid_fd(int fd) {
+    if (fd < 0 || fd >= FDTABLE_SIZE)
+        exit(-1);
 }
