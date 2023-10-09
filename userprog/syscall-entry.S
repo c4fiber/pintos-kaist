@@ -22,7 +22,7 @@ syscall_entry:
 	push %rax
 	movq temp1(%rip), %rbx
 	push %rbx
-	pushq $0
+	pushq $0 /* skip rcx */
 	push %rdx
 	push %rbp
 	push %rdi
@@ -38,6 +38,7 @@ syscall_entry:
 	push %r15
 	movq %rsp, %rdi
 
+// 9번이 IF이다., r11: eflags register
 check_intr:
 	btsq $9, %r11          /* Check whether we recover the interrupt */
 	jnb no_sti

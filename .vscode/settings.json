@@ -11,6 +11,7 @@
         "off_t.h": "c",
         "malloc.h": "c",
         "filesys.h": "c",
-        "synch.h": "c"
+        "synch.h": "c",
+        "string.h": "c"
     }
 }

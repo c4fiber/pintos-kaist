@@ -14,6 +14,9 @@ static __inline int64_t syscall (uint64_t num_, uint64_t a1_, uint64_t a2_,
 	register uint64_t *a5 asm ("r8") = (uint64_t *) a5_;
 	register uint64_t *a6 asm ("r9") = (uint64_t *) a6_;
 
+	// a: address, g: general
+	// cc (condition code): indicate that code modifiy flags register
+	// memory: code performs memory access (read, write)
 	__asm __volatile(
 			"mov %1, %%rax\n"
 			"mov %2, %%rdi\n"

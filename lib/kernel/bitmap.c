@@ -16,6 +16,8 @@
    If bit 0 in an element represents bit K in the bitmap,
    then bit 1 in the element represents bit K+1 in the bitmap,
    and so on. */
+
+// kth bit in the bitmap is represented by (k % ELEM_BITS)th bit in the element
 typedef unsigned long elem_type;
 
 /* Number of bits in an element. */
@@ -335,4 +337,3 @@ void
 bitmap_dump (const struct bitmap *b) {
 	hex_dump (0, b->bits, byte_cnt (b->bit_cnt), false);
 }
-
