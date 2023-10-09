@@ -210,9 +210,20 @@ int read(int fd, void *buffer, unsigned length) {
     check_address(file);
     check_address(buffer);
 
+    // current thread does not have fd
+    if (fd >= thread_current()->fd_count) {
+        return -1;
+    }
+
+    void *file = thread_current()->fd_table[fd];
+    // fd == STDIN인지 확인
     if (fd == 0) {
         for (int i = 0; i < length; i++) {
             ((char *)buffer)[i] = input_getc();
+            // 엔터를 눌렀는지 확인
+            if (input_getc() == '\0') {
+                break;
+            }
         }
         return length;
     }
@@ -273,39 +284,39 @@ void close(int fd) {
     thread_current()->fd_table[fd] = NULL;
 }
 
-/* dup2 */
-int dup2(int oldfd, int newfd) {
-    if (oldfd == newfd) {
+    /* dup2 */
+    int dup2(int oldfd, int newfd) {
+        if (oldfd == newfd) {
+            return newfd;
+        }
+        if (oldfd < 0 || oldfd >= FDTABLE_SIZE) {
+            return -1;
+        }
+        if (newfd < 0 || newfd >= FDTABLE_SIZE) {
+            return -1;
+        }
+        if (thread_current()->fd_table[oldfd] == NULL) {
+            return -1;
+        }
+        if (thread_current()->fd_table[newfd] != NULL) {
+            close(newfd);
+        }
+        thread_current()->fd_table[newfd] = thread_current()->fd_table[oldfd];
         return newfd;
     }
-    if (oldfd < 0 || oldfd >= FDTABLE_SIZE) {
-        return -1;
-    }
-    if (newfd < 0 || newfd >= FDTABLE_SIZE) {
-        return -1;
-    }
-    if (thread_current()->fd_table[oldfd] == NULL) {
-        return -1;
-    }
-    if (thread_current()->fd_table[newfd] != NULL) {
-        close(newfd);
-    }
-    thread_current()->fd_table[newfd] = thread_current()->fd_table[oldfd];
-    return newfd;
-}
 
-// exit(-1) if invalid address
-static void check_address(void *addr) {
-    if (addr == NULL)
-        exit(-1);
-    if (!is_user_vaddr(addr))
-        exit(-1);
-    if (pml4_get_page(thread_current()->pml4, addr) == NULL)
-        exit(-1);
-}
+    // exit(-1) if invalid address
+    static void check_address(void *addr) {
+        if (addr == NULL)
+            exit(-1);
+        if (!is_user_vaddr(addr))
+            exit(-1);
+        if (pml4_get_page(thread_current()->pml4, addr) == NULL)
+            exit(-1);
+    }
 
-// exit(-1) if invalid fd
-static void check_valid_fd(int fd) {
-    if (fd < 0 || fd >= FDTABLE_SIZE)
-        exit(-1);
-}
+    // exit(-1) if invalid fd
+    static void check_valid_fd(int fd) {
+        if (fd < 0 || fd >= FDTABLE_SIZE)
+            exit(-1);
+    }

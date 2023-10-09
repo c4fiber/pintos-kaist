@@ -12,6 +12,7 @@
         "malloc.h": "c",
         "filesys.h": "c",
         "synch.h": "c",
-        "string.h": "c"
+        "string.h": "c",
+        "interrupt.h": "c"
     }
 }
