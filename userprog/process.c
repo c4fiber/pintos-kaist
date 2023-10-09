@@ -33,7 +33,6 @@ static void process_cleanup(void);
 static bool load(const char *file_name, struct intr_frame *if_);
 static void initd(void *f_name);
 static void __do_fork(void *);
-static struct thread *get_child_process(int pid);
 
 /* General process initializer for initd and other process. */
 static void process_init(void) { struct thread *current = thread_current(); }
@@ -91,7 +90,7 @@ tid_t process_fork(const char *name, struct intr_frame *if_) {
     int child_tid = thread_create(name, PRI_DEFAULT, __do_fork, &fork_base);
 
     // put child process to child_list
-    struct thread *child = get_child_process(child_tid);
+    struct thread *child = find_thread(child_tid);
     if (child == NULL) {
         return -1;
     }
@@ -263,19 +262,18 @@ int process_wait(tid_t child_tid UNUSED) {
      * XXX:       to add infinite loop here before
      * XXX:       implementing the process_wait. */
     struct thread *curr = thread_current();
+    struct thread *t = NULL;
 
-    // find child process in child_list
-    struct thread *t = find_thread(child_tid);
-    if (t == NULL) {
-        return -1;
-    }
+    int backup_status = 0;
 
-    // wait process (busy waiting)
-    while (t->exit_status == -1) {
+
+    // wait process (busy waiting)`
+    while ((t = find_thread(child_tid)) != NULL) {
+        backup_status = t->exit_status;
         thread_yield();
     }
 
-    return t->exit_status;
+    return backup_status;
 }
 
 /* Exit the process. This function is called by thread_exit (). */
@@ -289,7 +287,7 @@ void process_exit(void) {
     // TODO could be changed to use condition variables
     curr->wait_call_sema.value = list_size(&curr->wait_call_sema.waiters);
 
-    printf("%s: exit(%d)\n", thread_current()->name, curr->exit_status);
+    // printf("%s: exit(%d)\n", thread_current()->name, curr->exit_status);
     process_cleanup();
 }
 
@@ -763,19 +761,3 @@ static bool setup_stack(struct intr_frame *if_) {
     return success;
 }
 #endif /* VM */
-
-/* get child process by pid */
-static struct thread *get_child_process(int pid) {
-    struct thread *curr = thread_current();
-    struct list_elem *e;
-    struct thread *t;
-
-    for (e = list_begin(&curr->child_list); e != list_end(&curr->child_list);
-         e = list_next(e)) {
-        t = list_entry(e, struct thread, child_elem);
-        if (t->tid == pid) {
-            return t;
-        }
-    }
-    return NULL;
-}

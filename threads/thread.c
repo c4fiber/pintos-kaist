@@ -493,7 +493,7 @@ static void init_thread(struct thread *t, const char *name, int priority) {
     t->fd_table = NULL;
 
     /* system call */
-    t->exit_status = -1;
+    t->exit_status = 0;
     sema_init(&t->wait_call_sema, 0);
     list_init(&t->child_list);
 }
