@@ -261,6 +261,7 @@ int process_wait(tid_t child_tid UNUSED) {
     /* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
      * XXX:       to add infinite loop here before
      * XXX:       implementing the process_wait. */
+  
     struct thread *curr = thread_current();
     struct thread *t = NULL;
 
@@ -274,6 +275,7 @@ int process_wait(tid_t child_tid UNUSED) {
     }
 
     return backup_status;
+
 }
 
 /* Exit the process. This function is called by thread_exit (). */

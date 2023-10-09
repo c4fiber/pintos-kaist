@@ -72,6 +72,11 @@ void syscall_init(void) {
      * mode stack. Therefore, we masked the FLAG_FL. */
     write_msr(MSR_SYSCALL_MASK,
               FLAG_IF | FLAG_TF | FLAG_DF | FLAG_IOPL | FLAG_AC | FLAG_NT);
+
+    extern struct lock filesys_lock;		  
+	//project 2. system call
+	// lock_init(&filesys_lock);
+	//project 2. system call
 }
 
 /* The main system call interface */
@@ -237,14 +242,24 @@ int read(int fd, void *buffer, unsigned length) {
     }
 
     void *file = thread_current()->fd_table[fd];
+	//fd == STDIN인지 확인
     if (fd == 0) {
         int i;
         for (i = 0; i < length; i++) {
             ((char *)buffer)[i] = input_getc();
+			//엔터를 눌렀는지 확인
+			if (input_getc() == '\0') {
+				break;
+			}
         }
-        return length;
-    } else {
+        // return length;
+	} else {
+		if (length <= 0) {
+			return -1;
+		}
+		// lock_acquire(&filesys_lock);	
         return file_read(file, buffer, length);
+		// lock_release(&filesys_lock);
     }
     return -1;
 }
@@ -294,7 +309,7 @@ void close(int fd) {
     struct file *file = thread_current()->fd_table[fd];
     if (file == NULL) {
         return;
-    }
+
     // file_close(file);
     thread_current()->fd_table[fd] = NULL;
 }
