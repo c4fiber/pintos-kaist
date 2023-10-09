@@ -230,10 +230,11 @@ static struct thread *find_donor(struct lock *lock) {
 }
 
 /* lock holder에게 priority donation 수행 */
-static void priority_donate(struct lock *lock, struct thread* donee) {
+static void priority_donate(struct lock *lock, struct thread *donee) {
     struct thread *holder = get_holder(lock);
     struct thread *donor_thread = find_donor(lock);
-    // printf("priority donation by %s to %s\n", thread_current()->name, holder->name);
+    // printf("priority donation by %s to %s\n", thread_current()->name,
+    // holder->name);
 
     ASSERT(holder != NULL);
 
