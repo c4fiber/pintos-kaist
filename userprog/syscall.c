@@ -14,6 +14,7 @@
 #include "devices/input.h"
 #include "lib/kernel/stdio.h"
 #include "threads/palloc.h"
+#include "lib/stdio.h"
 
 void syscall_entry(void);
 void syscall_handler(struct intr_frame *);
