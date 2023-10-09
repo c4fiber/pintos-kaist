@@ -158,15 +158,19 @@ void syscall_handler(struct intr_frame *f UNUSED) {
     // thread_exit ();
 }
 
-//project 2. user memory
-void check_address(void *addr)
-{
-	if (addr == NULL)
-		exit(-1);
-	if (!is_user_vaddr(addr))
-		exit(-1);
-	if (pml4_get_page(thread_current()->pml4, addr) == NULL)
-		exit(-1);
+// project 2. user memory
+void check_address(void *addr) {
+    if (addr == NULL)
+        exit(-1);
+    if (!is_user_vaddr(addr))
+        exit(-1);
+    if (pml4_get_page(thread_current()->pml4, addr) == NULL)
+        exit(-1);
+}
+
+void check_valid_fd(int fd) {
+    if (fd < 0 || fd >= FDTABLE_SIZE)
+        exit(-1);
 }
 
 /* Halt */
@@ -193,7 +197,7 @@ int wait(pid_t pid) { return process_wait(pid); }
 
 /* Create */
 bool create(const char *file, unsigned initial_size) {
-	check_address(file);
+    check_address(file);
     return filesys_create(file, initial_size);
 }
 
@@ -202,7 +206,7 @@ bool remove(const char *file) { return filesys_remove(file); }
 
 /* Open */
 int open(const char *file_name) {
-	check_address(file_name);
+    check_address(file_name);
     struct file *file = filesys_open(file_name);
     if (file == NULL) {
         return -1;
@@ -214,6 +218,8 @@ int open(const char *file_name) {
 
 /* Filesize */
 int filesize(int fd) {
+    check_valid_fd(fd);
+
     struct file *file = thread_current()->fd_table[fd - 4]; // except 0,1,2
     if (file == NULL) {
         return -1;
@@ -223,10 +229,7 @@ int filesize(int fd) {
 
 /* Read */
 int read(int fd, void *buffer, unsigned length) {
-    // invalid fd
-    if (fd == 1 || fd == 2 || fd < 0 || fd >= FDTABLE_SIZE) {
-        return -1;
-    }
+    check_valid_fd(fd);
 
     // current thread does not have fd
     if (fd >= thread_current()->fd_count) {
@@ -248,10 +251,7 @@ int read(int fd, void *buffer, unsigned length) {
 
 /* Write */
 int write(int fd, const void *buffer, unsigned length) {
-    // invalid fd
-    if (fd == 0 || fd < 0 || fd >= FDTABLE_SIZE) {
-        return -1;
-    }
+    check_valid_fd(fd);
 
     // current thread does not have fd
     if (fd >= thread_current()->fd_count) {
@@ -286,17 +286,16 @@ unsigned tell(int fd) {
     return file_tell(file);
 }
 
-
 /* close */
 void close(int fd) {
-    if (fd >= thread_current() -> fd_count ) {
+    if (fd >= thread_current()->fd_count) {
         return;
     }
     struct file *file = thread_current()->fd_table[fd];
     if (file == NULL) {
         return;
     }
-    //file_close(file);
+    // file_close(file);
     thread_current()->fd_table[fd] = NULL;
 }
 
