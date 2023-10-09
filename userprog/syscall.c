@@ -293,15 +293,15 @@ unsigned tell(int fd) {
 
 /* close */
 void close(int fd) {
-    if (fd >= thread_current() -> fd_count ) {
+    if (fd < 2 || fd >= thread_current() -> fd_count ) {
         return;
     }
     struct file *file = thread_current()->fd_table[fd];
     if (file == NULL) {
         return;
     }
-    // file_close(file);
     thread_current()->fd_table[fd] = NULL;
+    file_close(file);
 }
 
 /* dup2 */

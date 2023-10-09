@@ -5,6 +5,8 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include "threads/interrupt.h"
+#include "threads/synch.h"
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -105,6 +107,10 @@ struct thread {
     int exit_status;
     uint16_t fd_count; // 현재 보유한 fd의 개수
     void **fd_table; // fd에 해당하는 file 포인터를 저장하는 테이블
+
+    struct semaphore load_sema; // 현재 스레드가 load되는 동안 부모가 기다리게 하기 위한 semaphore
+	struct semaphore exit_sema;
+	struct semaphore wait_sema;
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem; /* List element. */
