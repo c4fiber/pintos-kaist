@@ -14,6 +14,7 @@ void syscall_entry(void);
 void syscall_handler(struct intr_frame *);
 
 /* Projects 2 and later. */
+void check_address(void *addr);
 void halt(void) NO_RETURN;
 void exit(int status) NO_RETURN;
 pid_t fork(const char *thread_name, struct intr_frame *);
@@ -139,6 +140,17 @@ void syscall_handler(struct intr_frame *f UNUSED) {
     // printf ("system call!\n");
     // thread_exit ();
 }
+//project 2. user memory
+void check_address(void *addr)
+{
+	if (addr == NULL)
+		exit(-1);
+	if (!is_user_vaddr(addr))
+		exit(-1);
+	if (pml4_get_page(thread_current()->pml4, addr) == NULL)
+		exit(-1);
+}
+//project 2. user memory
 
 /* Halt */
 void halt(void) { power_off(); }
@@ -163,6 +175,7 @@ int wait(pid_t pid) { return process_wait(pid); }
 
 /* Create */
 bool create(const char *file, unsigned initial_size) {
+	check_address(file);
     return filesys_create(file, initial_size);
 }
 
@@ -171,6 +184,7 @@ bool remove(const char *file) { return filesys_remove(file); }
 
 /* Open */
 int open(const char *file_name) {
+	check_address(file_name);
     struct file *file = filesys_open(file_name);
     if (file == NULL) {
         return -1;
