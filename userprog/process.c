@@ -265,23 +265,17 @@ int process_wait(tid_t child_tid UNUSED) {
     struct thread *curr = thread_current();
 
     // find child process in child_list
-    struct list_elem *e;
-    struct thread *child = get_child_process(child_tid);
-
-    // if child process not found, return -1
-    if (child == NULL) {
+    struct thread *t = find_thread(child_tid);
+    if (t == NULL) {
         return -1;
     }
 
-    // if child process already exit, return child process's exit status
-    if (child->exit_status != -1) {
-        return child->exit_status;
+    // wait process (busy waiting)
+    while (t->exit_status == -1) {
+        thread_yield();
     }
 
-    // wait until child process exit
-    sema_down(&child->wait_call_sema);
-
-    return child->exit_status;
+    return t->exit_status;
 }
 
 /* Exit the process. This function is called by thread_exit (). */

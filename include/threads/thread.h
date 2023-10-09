@@ -112,6 +112,9 @@ struct thread {
     struct list child_list;
     struct list_elem child_elem;
 
+    /* for all list */
+    struct list_elem all_elem;
+
     /* Shared between thread.c and synch.c. */
     struct list_elem elem; /* List element. */
 
@@ -166,6 +169,8 @@ void do_iret(struct intr_frame *tf);
 
 void thread_sleep(const int64_t);
 void thread_wake_up(const int64_t);
+
+struct thread *find_thread(tid_t tid);
 
 /* helper functions & macros */
 #ifndef MAX
