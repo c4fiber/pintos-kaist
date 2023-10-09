@@ -1,54 +1,40 @@
 #include "userprog/syscall.h"
-#include "intrinsic.h"
-#include "threads/flags.h"
-#include "threads/interrupt.h"
-#include "threads/loader.h"
-#include "threads/thread.h"
-#include "userprog/gdt.h"
 #include <stdio.h>
 #include <syscall-nr.h>
-
-typedef int pid_t;
+#include "threads/interrupt.h"
+#include "threads/thread.h"
+#include "threads/loader.h"
+#include "userprog/gdt.h"
+#include "userprog/process.h"
+#include "threads/flags.h"
+#include "filesys/filesys.h"
+#include "filesys/file.h"
+#include "intrinsic.h"
+#include "threads/synch.h"
+#include "devices/input.h"
+#include "lib/kernel/stdio.h"
+#include "threads/palloc.h"
 
 void syscall_entry(void);
 void syscall_handler(struct intr_frame *);
-
-/* process */
-void halt(void) NO_RETURN;
-void exit(int status) NO_RETURN;
-pid_t fork(const char *thread_name, struct intr_frame *);
-int exec(const char *file_name);
-int wait(pid_t);
-
-/* file */
-bool create(const char *file_name, unsigned initial_size);
-bool remove(const char *file_name);
+void check_address(void *addr);
+void halt(void);
+void exit(int status);
+bool create(const char *file, unsigned initial_size);
+bool remove(const char *file);
 int open(const char *file_name);
-
-/* file descriptor */
 int filesize(int fd);
-int read(int fd, void *buffer, unsigned length);
-int write(int fd, const void *buffer, unsigned length);
+int read(int fd, void *buffer, unsigned size);
+int write(int fd, const void *buffer, unsigned size);
 void seek(int fd, unsigned position);
 unsigned tell(int fd);
 void close(int fd);
+tid_t fork(const char *thread_name, struct intr_frame *f);
+int exec(const char *cmd_line);
+int wait(int pid);
 
-/* Extra */
-int dup2(int oldfd, int newfd);
 
-static bool is_valid_pointer(const void *ptr) {
-    if (ptr == NULL) {
-        return false;
-    }
-    // if (!is_user_vaddr(ptr)) {
-    //     return 1;
-    // }
-    if (pml4e_walk(thread_current()->pml4, ptr, false) == NULL) {
-        return false;
-    }
-    return true;
-}
-
+static struct lock filesys_lock;
 /* System call.
  *
  * Previously system call services was handled by the interrupt handler
@@ -58,279 +44,242 @@ static bool is_valid_pointer(const void *ptr) {
  * The syscall instruction works by reading the values from the the Model
  * Specific Register (MSR). For the details, see the manual. */
 
-#define MSR_STAR 0xc0000081         /* Segment selector msr */
-#define MSR_LSTAR 0xc0000082        /* Long mode SYSCALL target */
+#define MSR_STAR 0xc0000081			/* Segment selector msr */
+#define MSR_LSTAR 0xc0000082		/* Long mode SYSCALL target */
 #define MSR_SYSCALL_MASK 0xc0000084 /* Mask for the eflags */
 
-void syscall_init(void) {
-    write_msr(MSR_STAR,
-              ((uint64_t)SEL_UCSEG - 0x10) << 48 | ((uint64_t)SEL_KCSEG) << 32);
-    write_msr(MSR_LSTAR, (uint64_t)syscall_entry);
+void syscall_init(void)
+{
+	write_msr(MSR_STAR, ((uint64_t)SEL_UCSEG - 0x10) << 48 |
+							((uint64_t)SEL_KCSEG) << 32);
+	write_msr(MSR_LSTAR, (uint64_t)syscall_entry);
 
-    /* The interrupt service rountine should not serve any interrupts
-     * until the syscall_entry swaps the userland stack to the kernel
-     * mode stack. Therefore, we masked the FLAG_FL. */
-    write_msr(MSR_SYSCALL_MASK,
-              FLAG_IF | FLAG_TF | FLAG_DF | FLAG_IOPL | FLAG_AC | FLAG_NT);
-
-    extern struct lock filesys_lock;		  
-	//project 2. system call
-	// lock_init(&filesys_lock);
-	//project 2. system call
+	/* The interrupt service rountine should not serve any interrupts
+	 * until the syscall_entry swaps the userland stack to the kernel
+	 * mode stack. Therefore, we masked the FLAG_FL. */
+	write_msr(MSR_SYSCALL_MASK,
+			  FLAG_IF | FLAG_TF | FLAG_DF | FLAG_IOPL | FLAG_AC | FLAG_NT);
+	lock_init(&filesys_lock);
 }
 
 /* The main system call interface */
-void syscall_handler(struct intr_frame *f UNUSED) {
-    // TODO: Your implementation goes here.
-    /**
-     * get argument from f
-     * system call number: %rax
-     * argumnets:
-     *   argv[0], argv[1], argv[2], argv[3], argv[4], argv[5]
-     *   %rdi,    %rsi,    %rdx,    %r10,    %r8,     %r9
-     *
-     * return value: %rax
-     */
-
-    // get system call number
-    uint64_t syscall_num = f->R.rax;
-    char *argv[6];
-    memset(argv, 0, sizeof(argv));
-    int argc = 0;
-
-    // get arguments
-    argv[0] = f->R.rdi;
-    argv[1] = f->R.rsi;
-    argv[2] = f->R.rdx;
-    argv[3] = f->R.r10;
-    argv[4] = f->R.r8;
-    argv[5] = f->R.r9;
-
-    // get argc
-    while (argv[argc] != NULL) {
-        argc++;
-    }
-
-    /* call system call */
-    switch (syscall_num) {
-    case SYS_HALT:
-        power_off();
-        break;
-    case SYS_EXIT:
-        exit(argv[0]);
-        break;
-    case SYS_FORK:
-        f->R.rax = fork(argv[0], f);
-        break;
-    case SYS_EXEC:
-        // TODO Please note that file descriptors remain open across an exec
-        // call. If any of these descriptors is writable, it must be closed
-        f->R.rax = exec(argv[0]);
-        break;
-    case SYS_WAIT:
-        f->R.rax = wait(argv[0]);
-        break;
-    case SYS_CREATE:
-        f->R.rax = create(argv[0], argv[1]);
-        break;
-    case SYS_REMOVE:
-        f->R.rax = remove(argv[0]);
-        break;
-    case SYS_OPEN:
-        f->R.rax = open(argv[0]);
-        break;
-    case SYS_FILESIZE:
-        f->R.rax = filesize(argv[0]);
-        break;
-    case SYS_READ:
-        f->R.rax = read(argv[0], argv[1], argv[2]);
-        break;
-    case SYS_WRITE:
-        f->R.rax = write(argv[0], argv[1], argv[2]);
-        break;
-    case SYS_SEEK:
-        seek(argv[0], argv[1]); // no return value
-        break;
-    case SYS_TELL:
-        f->R.rax = tell(argv[0]);
-        break;
-    case SYS_CLOSE:
-        close(argv[0]); // no return value
-        break;
-    }
-
-    // printf ("system call!\n");
-    // thread_exit ();
+void syscall_handler(struct intr_frame *f UNUSED)
+{
+	int syscall_n = f->R.rax; /* 시스템 콜 넘버 */
+	switch (syscall_n)
+	{
+	case SYS_HALT:
+		halt();
+		break;
+	case SYS_EXIT:
+		exit(f->R.rdi);
+		break;
+	case SYS_FORK:
+		f->R.rax = fork(f->R.rdi, f);
+		break;
+	case SYS_EXEC:
+		f->R.rax = exec(f->R.rdi);
+		break;
+	case SYS_WAIT:
+		f->R.rax = wait(f->R.rdi);
+		break;
+	case SYS_CREATE:
+		f->R.rax = create(f->R.rdi, f->R.rsi);
+		break;
+	case SYS_REMOVE:
+		f->R.rax = remove(f->R.rdi);
+		break;
+	case SYS_OPEN:
+		f->R.rax = open(f->R.rdi);
+		break;
+	case SYS_FILESIZE:
+		f->R.rax = filesize(f->R.rdi);
+		break;
+	case SYS_READ:
+		f->R.rax = read(f->R.rdi, f->R.rsi, f->R.rdx);
+		break;
+	case SYS_WRITE:
+		f->R.rax = write(f->R.rdi, f->R.rsi, f->R.rdx);
+		break;
+	case SYS_SEEK:
+		seek(f->R.rdi, f->R.rsi);
+		break;
+	case SYS_TELL:
+		f->R.rax = tell(f->R.rdi);
+		break;
+	case SYS_CLOSE:
+		close(f->R.rdi);
+	}
 }
 
-// project 2. user memory
-void check_address(void *addr) {
-    if (addr == NULL)
-        exit(-1);
-    if (!is_user_vaddr(addr))
-        exit(-1);
-    if (pml4_get_page(thread_current()->pml4, addr) == NULL)
-        exit(-1);
+void check_address(void *addr)
+{
+	if (addr == NULL)
+		exit(-1);
+	if (!is_user_vaddr(addr))
+		exit(-1);
+	if (pml4_get_page(thread_current()->pml4, addr) == NULL)
+		exit(-1);
 }
 
-void check_valid_fd(int fd) {
-    if (fd < 0 || fd >= FDTABLE_SIZE)
-        exit(-1);
+void halt(void)
+{
+	power_off();
 }
 
-/* Halt */
-void halt(void) { power_off(); }
-
-/* Exit */
-void exit(int status) {
-    printf("%s: exit(%d)\n", thread_current()->name, status);
-    thread_current()->exit_status = status;
-    thread_exit();
+void exit(int status)
+{
+	struct thread *curr = thread_current();
+	curr->exit_status = status; // 이거 wait에서 사용?
+	printf("%s: exit(%d)\n", curr->name, status);
+	thread_exit();
 }
 
-/* Fork */
-pid_t fork(const char *thread_name, struct intr_frame *f) {
-    // child process의 반환값(rax)은 이때 반환하는 값이다.
-    return process_fork(thread_name, f);
+bool create(const char *file, unsigned initial_size)
+{
+	check_address(file);
+	return filesys_create(file, initial_size);
 }
 
-/* Exec */
-int exec(const char *file) { return process_exec(file); }
-
-/* Wait */
-int wait(pid_t pid) { return process_wait(pid); }
-
-/* Create */
-bool create(const char *file, unsigned initial_size) {
-    check_address(file);
-    return filesys_create(file, initial_size);
+bool remove(const char *file)
+{
+	check_address(file);
+	return filesys_remove(file);
 }
 
-/* Remove */
-bool remove(const char *file) { return filesys_remove(file); }
-
-/* Open */
-int open(const char *file_name) {
-    check_address(file_name);
-    struct file *file = filesys_open(file_name);
-    if (file == NULL) {
-        return -1;
-    }
-
-    thread_current()->fd_table[thread_current()->fd_count] = file;
-    return thread_current()->fd_count++;
+int open(const char *file_name)
+{
+	check_address(file_name);
+	struct file *file = filesys_open(file_name);
+	if (file == NULL)
+		return -1;
+	int fd = process_add_file(file);
+	if (fd == -1)
+		file_close(file);
+	return fd;
 }
 
-/* Filesize */
-int filesize(int fd) {
-    check_valid_fd(fd);
-
-    struct file *file = thread_current()->fd_table[fd - 4]; // except 0,1,2
-    if (file == NULL) {
-        return -1;
-    }
-    return file_length(file);
+int filesize(int fd)
+{
+	struct file *file = process_get_file(fd);
+	if (file == NULL)
+		return -1;
+	return file_length(file);
 }
 
-/* Read */
-int read(int fd, void *buffer, unsigned length) {
-    check_valid_fd(fd);
-    check_address(buffer);
+void seek(int fd, unsigned position)
+{
+	struct file *file = process_get_file(fd);
+	if (file == NULL)
+		return;
+	file_seek(file, position);
+}
 
-    // current thread does not have fd
-    if (fd >= thread_current()->fd_count) {
-        return -1;
-    }
+unsigned tell(int fd)
+{
+	struct file *file = process_get_file(fd);
+	if (file == NULL)
+		return;
+	return file_tell(file);
+}
 
-    void *file = thread_current()->fd_table[fd];
-	//fd == STDIN인지 확인
-    if (fd == 0) {
-        int i;
-        for (i = 0; i < length; i++) {
-            ((char *)buffer)[i] = input_getc();
-			//엔터를 눌렀는지 확인
-			if (input_getc() == '\0') {
-				break;
-			}
-        }
-        // return length;
-	} else {
-		if (length <= 0) {
+void close(int fd)
+{
+	struct file *file = process_get_file(fd);
+	if (file == NULL)
+		return;
+	file_close(file);
+	process_close_file(fd);
+}
+int read(int fd, void *buffer, unsigned size)
+{
+	check_address(buffer);
+
+	char *ptr = (char *)buffer;
+	int bytes_read = 0;
+
+	lock_acquire(&filesys_lock);
+	if (fd == STDIN_FILENO)
+	{
+		for (int i = 0; i < size; i++)
+		{
+			*ptr++ = input_getc();
+			bytes_read++;
+		}
+		lock_release(&filesys_lock);
+	}
+	else
+	{
+		if (fd < 2)
+		{
+
+			lock_release(&filesys_lock);
 			return -1;
 		}
-        return file_read(file, buffer, length);
-    }
-    return -1;
+		struct file *file = process_get_file(fd);
+		if (file == NULL)
+		{
+
+			lock_release(&filesys_lock);
+			return -1;
+		}
+		bytes_read = file_read(file, buffer, size);
+		lock_release(&filesys_lock);
+	}
+	return bytes_read;
 }
 
-/* Write */
-int write(int fd, const void *buffer, unsigned length) {
-    check_valid_fd(fd);
-    check_address (buffer);
-
-    // current thread does not have fd
-    if (fd >= thread_current()->fd_count) {
-        return -1;
-    }
-
-    void *file = thread_current()->fd_table[fd];
-    if (fd == 1) {
-        putbuf(buffer, length);
-        return length;
-    } else {
-        return file_write(file, buffer, length);
-    }
-    return -1;
+int write(int fd, const void *buffer, unsigned size)
+{
+	check_address(buffer);
+	int bytes_write = 0;
+	if (fd == STDOUT_FILENO)
+	{
+		putbuf(buffer, size);
+		bytes_write = size;
+	}
+	else
+	{
+		if (fd < 2)
+			return -1;
+		struct file *file = process_get_file(fd);
+		if (file == NULL)
+			return -1;
+		lock_acquire(&filesys_lock);
+		bytes_write = file_write(file, buffer, size);
+		lock_release(&filesys_lock);
+	}
+	return bytes_write;
 }
 
-/* Seek */
-void seek(int fd, unsigned position) {
-    struct file *file = thread_current()->fd_table[fd];
-    if (file == NULL) {
-        return;
-    }
-    file_seek(file, position);
+tid_t fork(const char *thread_name, struct intr_frame *f)
+{
+	return process_fork(thread_name, f);
 }
 
-/* tell */
-unsigned tell(int fd) {
-    struct file *file = thread_current()->fd_table[fd];
-    if (file == NULL) {
-        return -1;
-    }
-    return file_tell(file);
+int exec(const char *cmd_line)
+{
+	check_address(cmd_line);
+
+	// process.c 파일의 process_create_initd 함수와 유사하다.
+	// 단, 스레드를 새로 생성하는 건 fork에서 수행하므로
+	// 이 함수에서는 새 스레드를 생성하지 않고 process_exec을 호출한다.
+
+	// process_exec 함수 안에서 filename을 변경해야 하므로
+	// 커널 메모리 공간에 cmd_line의 복사본을 만든다.
+	// (현재는 const char* 형식이기 때문에 수정할 수 없다.)
+	char *cmd_line_copy;
+	cmd_line_copy = palloc_get_page(0);
+	if (cmd_line_copy == NULL)
+		exit(-1);							  // 메모리 할당 실패 시 status -1로 종료한다.
+	strlcpy(cmd_line_copy, cmd_line, PGSIZE); // cmd_line을 복사한다.
+
+	// 스레드의 이름을 변경하지 않고 바로 실행한다.
+	if (process_exec(cmd_line_copy) == -1)
+		exit(-1); // 실패 시 status -1로 종료한다.
 }
 
-/* close */
-void close(int fd) {
-    if (fd >= thread_current()->fd_count) {
-        return;
-    }
-    struct file *file = thread_current()->fd_table[fd];
-    if (file == NULL) {
-        return;
-    }
-    // file_close(file);
-    thread_current()->fd_table[fd] = NULL;
-}
-
-/* dup2 */
-int dup2(int oldfd, int newfd) {
-    if (oldfd == newfd) {
-        return newfd;
-    }
-    if (oldfd < 0 || oldfd >= FDTABLE_SIZE) {
-        return -1;
-    }
-    if (newfd < 0 || newfd >= FDTABLE_SIZE) {
-        return -1;
-    }
-    if (thread_current()->fd_table[oldfd] == NULL) {
-        return -1;
-    }
-    if (thread_current()->fd_table[newfd] != NULL) {
-        close(newfd);
-    }
-    thread_current()->fd_table[newfd] = thread_current()->fd_table[oldfd];
-    return newfd;
+int wait(int pid)
+{
+	return process_wait(pid);
 }
