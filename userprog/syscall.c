@@ -33,6 +33,10 @@ void close(int fd);
 
 int dup2(int oldfd, int newfd);
 
+static bool invalid_address(const void *addr);
+static bool invalid_fd(const int fd);
+static bool invalid_file_name(const char *);
+
 static void check_address(void *addr);
 static void check_valid_fd(int fd);
 static struct lock filesys_lock;
@@ -154,8 +158,10 @@ void halt(void) { power_off(); }
 
 /* Exit with status */
 void exit(int status) {
-    printf("%s: exit(%d)\n", thread_current()->name, status);
-    thread_current()->exit_status = status;
+    struct thread *curr = thread_current();
+    curr->exit_status = status;
+
+    printf("%s: exit(%d)\n", curr->name, curr->exit_status);
     thread_exit();
 }
 
@@ -180,42 +186,47 @@ bool create(const char *file, unsigned initial_size) {
 /* Remove file */
 bool remove(const char *file) { return filesys_remove(file); }
 
-/* Open file */
+/* Open file, return file descriptor */
 int open(const char *file_name) {
-    check_address(file_name);
-    struct file *file = filesys_open(file_name);
-    if (file == NULL) {
+    if (invalid_file_name(file_name)) {
         return -1;
     }
 
-    thread_current()->fd_table[thread_current()->fd_count] = file;
-    return thread_current()->fd_count++;
+    lock_acquire(&filesys_lock);
+    void *file = filesys_open(file_name);
+    lock_release(&filesys_lock);
+
+    if (invalid_address(file)) {
+        return -1;
+    }
+
+    return thread_add_file(file);
 }
 
-/* Get filesize */
+/* Get filesize, return -1 if failed */
 int filesize(int fd) {
-    check_valid_fd(fd);
-
-    struct file *file = thread_current()->fd_table[fd]; // except 0,1,2
-    if (file == NULL) {
+    if (invalid_fd(fd)) {
         return -1;
     }
-    return file_length(file);
+
+    void *file = thread_get_file(fd);
+    if (invalid_address(file)) {
+        return -1;
+    }
+
+    lock_acquire(&filesys_lock);
+    int res = file_length(file);
+    lock_release(&filesys_lock);
+
+    return res;
 }
 
 /* Read file by fd */
 int read(int fd, void *buffer, unsigned length) {
-    check_valid_fd(fd);
-    void *file = thread_get_file(fd);
-    check_address(file);
-    check_address(buffer);
-
-    // current thread does not have fd
-    if (fd >= thread_current()->fd_count) {
+    if (invalid_fd(fd)) {
         return -1;
     }
 
-    void *file = thread_current()->fd_table[fd];
     // fd == STDIN인지 확인
     if (fd == 0) {
         for (int i = 0; i < length; i++) {
@@ -228,29 +239,48 @@ int read(int fd, void *buffer, unsigned length) {
         return length;
     }
 
+    void *file = thread_get_file(fd);
+    if (invalid_address(file) || invalid_address(buffer)) {
+        return -1;
+    }
+
+    // if (pml4e_walk(thread_current()->pml4, file, false) == NULL) {
+    //     return -1;
+    // }
+
     lock_acquire(&filesys_lock);
     int res = file_read(file, buffer, length);
     lock_release(&filesys_lock);
+
     return res;
 }
 
 /* Write file by fd */
 int write(int fd, const void *buffer, unsigned length) {
-    check_valid_fd(fd);
-
-    // current thread does not have fd
-    if (fd >= thread_current()->fd_count) {
+    if (invalid_fd(fd)) {
         return -1;
     }
 
-    void *file = thread_current()->fd_table[fd];
+    // fd == STDOUT인지 확인
     if (fd == 1) {
         putbuf(buffer, length);
         return length;
-    } else {
-        return file_write(file, buffer, length);
+    };
+
+    void *file = thread_get_file(fd);
+    if (invalid_address(file) || invalid_address(buffer)) {
+        return -1;
     }
-    return -1;
+
+    // if (pml4e_walk(thread_current()->pml4, file, false) == NULL) {
+    //     exit(-1);
+    // }
+
+    lock_acquire(&filesys_lock);
+    int res = file_write(file, buffer, length);
+    lock_release(&filesys_lock);
+
+    return res;
 }
 
 /* Seek file by fd */
@@ -284,39 +314,65 @@ void close(int fd) {
     thread_current()->fd_table[fd] = NULL;
 }
 
-    /* dup2 */
-    int dup2(int oldfd, int newfd) {
-        if (oldfd == newfd) {
-            return newfd;
-        }
-        if (oldfd < 0 || oldfd >= FDTABLE_SIZE) {
-            return -1;
-        }
-        if (newfd < 0 || newfd >= FDTABLE_SIZE) {
-            return -1;
-        }
-        if (thread_current()->fd_table[oldfd] == NULL) {
-            return -1;
-        }
-        if (thread_current()->fd_table[newfd] != NULL) {
-            close(newfd);
-        }
-        thread_current()->fd_table[newfd] = thread_current()->fd_table[oldfd];
+/* dup2 */
+int dup2(int oldfd, int newfd) {
+    if (oldfd == newfd) {
         return newfd;
     }
-
-    // exit(-1) if invalid address
-    static void check_address(void *addr) {
-        if (addr == NULL)
-            exit(-1);
-        if (!is_user_vaddr(addr))
-            exit(-1);
-        if (pml4_get_page(thread_current()->pml4, addr) == NULL)
-            exit(-1);
+    if (oldfd < 0 || oldfd >= FDTABLE_SIZE) {
+        return -1;
     }
-
-    // exit(-1) if invalid fd
-    static void check_valid_fd(int fd) {
-        if (fd < 0 || fd >= FDTABLE_SIZE)
-            exit(-1);
+    if (newfd < 0 || newfd >= FDTABLE_SIZE) {
+        return -1;
     }
+    if (thread_current()->fd_table[oldfd] == NULL) {
+        return -1;
+    }
+    if (thread_current()->fd_table[newfd] != NULL) {
+        close(newfd);
+    }
+    thread_current()->fd_table[newfd] = thread_current()->fd_table[oldfd];
+    return newfd;
+}
+
+// exit(-1) if invalid address
+static void check_address(void *addr) {
+    if (addr == NULL)
+        exit(-1);
+    if (!is_user_vaddr(addr))
+        exit(-1);
+    if (pml4_get_page(thread_current()->pml4, addr) == NULL)
+        exit(-1);
+}
+
+// exit(-1) if invalid fd
+static void check_valid_fd(int fd) {
+    if (fd < 0 || fd >= FDTABLE_SIZE)
+        exit(-1);
+}
+
+// true if invalid address
+static bool invalid_address(const void *addr) {
+    if (addr == NULL)
+        return true;
+    if (!is_user_vaddr(addr))
+        return true;
+    return false;
+}
+
+// true if invalid fd
+static bool invalid_fd(const int fd) {
+    if (fd < 0 || fd >= FDTABLE_SIZE)
+        return true;
+    return false;
+}
+
+static bool invalid_file_name(const char *file_name) {
+    if (invalid_address(file_name)) {
+        return true;
+    }
+    if (pml4e_walk(thread_current()->pml4, file_name, false) == NULL) {
+        return true;
+    }
+    return false;
+}

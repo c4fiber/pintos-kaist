@@ -489,12 +489,11 @@ static void init_thread(struct thread *t, const char *name, int priority) {
     list_init(&t->donor_list);
 
     /* file descriptor */
-    t->exit_status = 0;
-    t->fd_count = 3;
+    t->fd_count = 3; // stdin, stdout, stderr
     t->fd_table = NULL;
 
     /* system call */
-    t->exit_status = 0;
+    t->exit_status = 0; // default exit status
     sema_init(&t->wait_call_sema, 0);
     list_init(&t->child_list);
 }
@@ -685,7 +684,7 @@ struct file *thread_get_file(int fd) {
     if (fd < 0 || fd >= curr->fd_count) {
         return NULL;
     }
-    return curr->fd_table[fd];
+    return (struct file *)(curr->fd_table)[fd];
 }
 
 // find thread by tid from all list
@@ -706,4 +705,14 @@ struct thread *find_thread(tid_t tid) {
 
     intr_set_level(old_level);
     return NULL;
+}
+
+// add fd to fd_table
+int thread_add_file(void *file) {
+    struct thread *curr = thread_current();
+    if (curr->fd_count >= FDTABLE_SIZE) {
+        return -1;
+    }
+    curr->fd_table[curr->fd_count] = file;
+    return curr->fd_count++;
 }

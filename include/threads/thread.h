@@ -105,7 +105,6 @@ struct thread {
     struct lock *requesting_lock;
 
     /* file */
-    int exit_status;
     uint16_t fd_count; // 현재 보유한 fd의 개수
     void **fd_table; // fd에 해당하는 file 포인터를 저장하는 테이블
 
@@ -174,6 +173,7 @@ void thread_sleep(const int64_t);
 void thread_wake_up(const int64_t);
 
 struct thread *find_thread(tid_t tid);
+int thread_add_file(void *);
 
 /* helper functions & macros */
 #ifndef MAX
